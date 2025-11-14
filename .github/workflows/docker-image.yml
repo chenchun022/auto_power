@@ -11,28 +11,33 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    # 提前定义镜像名前缀（减少重复编写，便于验证）
+    # 关键修正：提前定义短哈希变量（在 env 中完成截取，避免 tags 中写复杂表达式）
     env:
-      IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/auto-power
+      DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USERNAME }}  # 单独定义用户名，便于复用
+      IMAGE_REPO: auto-power                             # 镜像仓库名（可自定义）
+      SHORT_SHA: ${{ github.sha[:8] }}                   # 提前计算短哈希（核心！）
+      # 完整镜像名前缀：用户名/仓库名（避免重复拼接）
+      IMAGE_PREFIX: ${{ secrets.DOCKERHUB_USERNAME }}/auto-power
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 新增步骤：验证 Secret 和镜像名格式（关键！提前排查空值）
-      - name: Verify Secret and Image Name
+      # 验证步骤：确认所有变量格式正确
+      - name: Verify Variables and Image Format
         run: |
-          echo "Docker Hub Username: ${{ secrets.DOCKERHUB_USERNAME }}"
-          echo "Full Image Name (latest): ${{ env.IMAGE_NAME }}:latest"
-          # 若镜像名开头是 "/" 或包含非法字符，直接报错退出
-          if [[ "${{ env.IMAGE_NAME }}" == "/"* || "${{ env.IMAGE_NAME }}" == "" ]]; then
-            echo "Error: DOCKERHUB_USERNAME is empty or invalid!"
+          echo "Docker Hub Username: ${{ env.DOCKERHUB_USER }}"
+          echo "Full Image Name (latest): ${{ env.IMAGE_PREFIX }}:latest"
+          echo "Short SHA: ${{ env.SHORT_SHA }}"
+          # 校验关键变量非空
+          if [[ -z "${{ env.DOCKERHUB_USER }}" || -z "${{ env.SHORT_SHA }}" ]]; then
+            echo "Error: DOCKERHUB_USERNAME or SHORT_SHA is empty!"
             exit 1
           fi
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          username: ${{ env.DOCKERHUB_USER }}  # 引用 env 变量，减少重复
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push Docker image
@@ -41,8 +46,8 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          # 直接引用提前定义的 env.IMAGE_NAME，减少拼接错误
+          # 直接引用 env 中的短哈希变量，无任何复杂表达式！
           tags: |
-            ${{ env.IMAGE_NAME }}:latest
-            ${{ env.IMAGE_NAME }}:${{ github.sha }}
-            ${{ env.IMAGE_NAME }}:main-${{ (github.sha)[:8] }}  # 用括号避免 YAML 解析冲突
+            ${{ env.IMAGE_PREFIX }}:latest
+            ${{ env.IMAGE_PREFIX }}:${{ github.sha }}
+            ${{ env.IMAGE_PREFIX }}:main-${{ env.SHORT_SHA }}  # 核心修正：用 env.SHORT_SHA 替代表达式
