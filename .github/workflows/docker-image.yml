@@ -1,0 +1,45 @@
+name: auto_power  # 工作流名称，保持不变
+
+# 触发条件：仅在 main 分支推送代码时触发（移除 pull_request，避免不必要构建）
+on:
+  push:
+    branches: [ "main" ]  # 仅 main 分支推送时执行
+    # 可选：仅当特定文件修改时触发（避免无关代码变动触发构建，如只监听 Dockerfile 和项目核心文件）
+    paths:
+      - 'Dockerfile'       # Dockerfile 变动
+      - 'main.py'          # 项目核心代码变动
+      - 'requirements.txt' # 依赖变动
+      - '.github/workflows/**' # 工作流文件自身变动
+
+jobs:
+  build-and-push:  # 任务名：构建并推送镜像（更清晰）
+    runs-on: ubuntu-latest  # 运行环境：Ubuntu 最新版
+    steps:
+      # 步骤1：检出 GitHub 仓库代码（官方 Action，稳定可靠）
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 步骤2：登录 Docker Hub（关键！需先在 GitHub Secrets 配置凭证）
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3  # 官方 Docker 登录 Action
+        with:
+          # 从 GitHub Secrets 读取 Docker Hub 用户名（避免明文暴露）
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          # 从 GitHub Secrets 读取 Docker Hub 访问令牌（替代密码，更安全）
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 步骤3：构建 Docker 镜像 + 推送到 Docker Hub（核心步骤）
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5  # 官方构建+推送 Action（比手动 docker 命令更规范）
+        with:
+          context: .  # 构建上下文：仓库根目录（即 Dockerfile 所在路径，保持不变）
+          file: ./Dockerfile  # Dockerfile 路径（确保与实际文件位置一致，默认根目录）
+          push: true  # 开启“构建后自动推送镜像”（核心开关）
+          # 镜像标签设计：兼顾“版本追溯”和“易用性”（避免用 date +%s 这种无意义标签）
+          tags: |
+            # 1. 基础标签：Docker Hub 用户名/镜像名:latest（默认拉取最新版）
+            ${{ secrets.DOCKERHUB_USERNAME }}/auto-power:latest
+            # 2. 版本追溯标签1：用 Git Commit 哈希（唯一标识某次代码提交，便于回滚）
+            ${{ secrets.DOCKERHUB_USERNAME }}/auto-power:${{ github.sha }}
+            # 3. 版本追溯标签2：用分支名（若多分支构建，可区分环境，这里固定 main）
+            ${{ secrets.DOCKERHUB_USERNAME }}/auto-power:main-${{ github.sha::8 }}
