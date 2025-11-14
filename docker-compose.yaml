@@ -7,9 +7,9 @@ services:
       context: .  # 使用当前目录的Dockerfile
       dockerfile: Dockerfile  # 指定Dockerfile文件名
     # 镜像名称
-    image: power-calculator:latest
+    image: auto_power:latest
     # 容器名称
-    container_name: power-calculator-app
+    container_name: auto_power
     # 端口映射：主机端口:容器端口
     ports:
       - "9548:8000"
