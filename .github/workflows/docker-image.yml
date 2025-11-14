@@ -1,47 +1,128 @@
 name: auto_power
+# 触发条件：推送到 main 分支时自动执行（无需手动打标签）
 on:
   push:
     branches: [ "main" ]
-    paths:
+    paths:  # 仅核心文件变动时触发，避免无效构建
       - 'Dockerfile'
       - 'main.py'
       - 'requirements.txt'
       - '.github/workflows/**'
 
+# 全局环境变量：统一配置
+env:
+  DOCKERHUB_REPO: ${{ secrets.DOCKERHUB_USERNAME }}/auto-power  # Docker Hub 仓库（用户名/镜像名）
+  PYTHON_VERSION: "3.9"  # 适配 Docker 基础镜像（python:3.9-slim）
+  DEFAULT_INIT_VERSION: "v1.0.0"  # 初始版本号（首次运行从这个开始）
+
 jobs:
-  build-and-push:
+  # Job1：自动生成语义化版本号 + 创建 Git 标签
+  auto-version:
     runs-on: ubuntu-latest
-    env:
-      # 关键修正：用 substr 函数替代 [:8]，彻底避免冒号解析冲突
-      SHORT_SHA: ${{ substr(github.sha, 0, 8) }}
-      IMAGE_PREFIX: ${{ secrets.DOCKERHUB_USERNAME }}/auto-power
+    permissions:
+      contents: write  # 必须：用于创建 Git 标签和推送标签
+    outputs:
+      NEW_VERSION: ${{ steps.tag-version.outputs.new_tag }}  # 输出新版本号，供后续 Job 使用
+    steps:
+      # 步骤1：检出代码（需完整历史，用于统计提交记录）
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 拉取所有历史提交，确保版本号计算正确
+          token: ${{ secrets.GITHUB_TOKEN }}  # 用于推送标签
+
+      # 步骤2：自动生成语义化版本号（核心步骤）
+      # 规则：feat 提交→次版本+1（v1.0.0→v1.1.0）；fix 提交→修订版+1（v1.0.0→v1.0.1）；其他→修订版+1
+      - name: Auto generate semantic version
+        id: tag-version
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          initial_version: ${{ env.DEFAULT_INIT_VERSION }}  # 首次运行的初始版本
+          release_branches: main  # 仅在 main 分支生成版本
+          # 版本号更新规则（基于 commit 信息前缀）
+          default_bump: patch  # 默认：修订版+1（如无 feat/fix 前缀）
+          bump_strategy: |
+            feat: minor  # commit 以 "feat:" 开头 → 次版本+1
+            fix: patch   # commit 以 "fix:" 开头 → 修订版+1
+            docs: patch  # 文档更新 → 修订版+1
+            style: patch # 代码格式 → 修订版+1
+            refactor: patch # 重构 → 修订版+1
+            test: patch  # 测试 → 修订版+1
+            chore: patch # 构建/依赖 → 修订版+1
+
+      # 步骤3：验证版本号（可选，便于调试）
+      - name: Verify new version
+        run: |
+          echo "自动生成的新版本号：${{ steps.tag-version.outputs.new_tag }}"
+          echo "上一版本号：${{ steps.tag-version.outputs.previous_tag }}"
+
+
+  # Job2：构建 Docker 镜像 + 推送到 Docker Hub（依赖 Job1 的版本号）
+  docker-build-push:
+    needs: auto-version  # 依赖 auto-version Job，获取新版本号
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read  # 仅需读取代码
+      packages: write # 可选：若同时推送到 GitHub Packages
+    steps:
+      # 步骤1：检出代码
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 步骤2：设置 Docker Buildx（优化镜像构建，支持多平台）
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      # 步骤3：登录 Docker Hub（核心，需提前配置 Secret）
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}  # GitHub 仓库 Secret
+          password: ${{ secrets.DOCKERHUB_TOKEN }}      # GitHub 仓库 Secret
+
+      # 步骤4：构建 Docker 镜像 + 推送到 Docker Hub（双标签：版本号 + latest）
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .  # 构建上下文：项目根目录
+          file: ./Dockerfile  # 你的 Dockerfile 路径
+          push: true  # 开启推送（关键）
+          # 镜像标签：同时打「版本号标签」和「latest标签」
+          tags: |
+            ${{ env.DOCKERHUB_REPO }}:${{ needs.auto-version.outputs.NEW_VERSION }}
+            ${{ env.DOCKERHUB_REPO }}:latest
+          # 可选：启用镜像缓存，加速后续构建
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # 步骤5：验证推送结果（可选，调试用）
+      - name: Verify Docker Hub push
+        run: |
+          echo "已推送镜像标签："
+          echo "- ${{ env.DOCKERHUB_REPO }}:${{ needs.auto-version.outputs.NEW_VERSION }}"
+          echo "- ${{ env.DOCKERHUB_REPO }}:latest"
+          # 可选：用 docker pull 验证（需额外时间，视情况开启）
+          # docker pull ${{ env.DOCKERHUB_REPO }}:${{ needs.auto-version.outputs.NEW_VERSION }}
+
+
+  # Job3：可选：创建 GitHub Release（关联版本号，便于用户下载说明）
+  create-github-release:
+    needs: [auto-version, docker-build-push]  # 依赖前两个 Job 完成
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 用于创建 Release
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 验证步骤：确认短哈希和镜像名格式正确
-      - name: Verify Variables
-        run: |
-          echo "Short SHA: ${{ env.SHORT_SHA }}"
-          echo "Image Name (latest): ${{ env.IMAGE_PREFIX }}:latest"
-          if [[ -z "${{ env.SHORT_SHA }}" || -z "${{ env.IMAGE_PREFIX }}" ]]; then
-            echo "Error: Variables are empty!"
-            exit 1
-          fi
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: |
-            ${{ env.IMAGE_PREFIX }}:latest
-            ${{ env.IMAGE_PREFIX }}:${{ github.sha }}
-            ${{ env.IMAGE_PREFIX }}:main-${{ env.SHORT_SHA }}  # 引用提前定义的短哈希
+          tag_name: ${{ needs.auto-version.outputs.NEW_VERSION }}  # 关联自动生成的标签
+          name: Release ${{ needs.auto-version.outputs.NEW_VERSION }}  # Release 标题
+          generate_release_notes: true  # 自动生成 Release Notes（基于 commit 记录）
+          draft: false  # 直接发布，不存草稿
+          prerelease: false  # 标记为正式版本
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 自动生成，无需手动配置
