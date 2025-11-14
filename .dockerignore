@@ -1,0 +1,8 @@
+# .dockerignore 文件内容（和Dockerfile同级）
+.git
+.gitignore
+venv/  # 本地虚拟环境
+__pycache__/
+*.log  # 日志文件
+.DS_Store  # Mac系统无用文件
+.github/  # GitHub Actions配置（容器内不需要）
