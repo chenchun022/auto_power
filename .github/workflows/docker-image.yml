@@ -42,4 +42,4 @@ jobs:
             # 2. 版本追溯标签1：用 Git Commit 哈希（唯一标识某次代码提交，便于回滚）
             ${{ secrets.DOCKERHUB_USERNAME }}/auto-power:${{ github.sha }}
             # 3. 版本追溯标签2：用分支名（若多分支构建，可区分环境，这里固定 main）
-            ${{ secrets.DOCKERHUB_USERNAME }}/auto-power:main-${{ github.sha::8 }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/auto-power:main-${{ github.sha[:8] }}
