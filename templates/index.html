@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>电力负荷计算工具</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    
+    <!-- 配置Tailwind自定义颜色和字体 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#165DFF',
+                        secondary: '#36CFC9',
+                        neutral: '#F5F7FA',
+                        dark: '#1D2129',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .card-shadow {
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+            }
+            .input-focus {
+                @apply focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none;
+            }
+            .btn-hover {
+                @apply hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans">
+    <!-- 顶部导航 -->
+    <header class="bg-white shadow-sm">
+        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <i class="fa fa-bolt text-primary text-2xl"></i>
+                <h1 class="text-xl md:text-2xl font-bold text-dark">电力负荷计算工具</h1>
+            </div>
+            <div class="text-sm text-gray-500">
+                专业电气计算 · 精准可靠
+            </div>
+        </div>
+    </header>
+
+    <!-- 主要内容区 -->
+    <main class="container mx-auto px-4 py-8 md:py-12">
+        <div class="max-w-5xl mx-auto">
+            <!-- 说明卡片 -->
+            <div class="bg-blue-50 border-l-4 border-primary p-4 mb-8 rounded-r">
+                <div class="flex items-start">
+                    <i class="fa fa-info-circle text-primary mt-1 mr-3"></i>
+                    <p class="text-sm text-gray-700">
+                        本工具用于计算电力系统中的有功功率(Pjs)和计算电流(Ijs)，适用于三相380V供电系统。
+                        请输入额定功率(Pe)、需要系数(Kx)和功率因数(cosφ)进行计算。
+                    </p>
+                </div>
+            </div>
+            
+            <!-- 计算区域 -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- 输入表单卡片 -->
+                <div class="bg-white rounded-xl p-6 card-shadow transform transition-all duration-300 hover:shadow-xl">
+                    <h2 class="text-lg md:text-xl font-semibold text-dark mb-6 flex items-center">
+                        <i class="fa fa-calculator text-primary mr-2"></i>输入参数
+                    </h2>
+                    
+                    <form action="/calculate" method="post" class="space-y-5">
+                        <!-- Pe输入 -->
+                        <div>
+                            <label for="pe" class="block text-sm font-medium text-gray-700 mb-1">
+                                额定功率 (Pe, kW)
+                            </label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <i class="fa fa-watt text-gray-400"></i>
+                                </div>
+                                <input 
+                                    type="number" 
+                                    id="pe" 
+                                    name="pe" 
+                                    step="0.01" 
+                                    min="0.01" 
+                                    required
+                                    value="{{ pe if pe is not none else '' }}"
+                                    class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg input-focus"
+                                    placeholder="例如：46.7"
+                                >
+                            </div>
+                        </div>
+                        
+                        <!-- Kx输入 -->
+                        <div>
+                            <label for="kx" class="block text-sm font-medium text-gray-700 mb-1">
+                                需要系数 (Kx)
+                            </label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <i class="fa fa-percent text-gray-400"></i>
+                                </div>
+                                <input 
+                                    type="number" 
+                                    id="kx" 
+                                    name="kx" 
+                                    step="0.01" 
+                                    min="0.01" 
+                                    max="1.0" 
+                                    required
+                                    value="{{ kx if kx is not none else '' }}"
+                                    class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg input-focus"
+                                    placeholder="例如：0.9"
+                                >
+                            </div>
+                        </div>
+                        
+                        <!-- cos输入 -->
+                        <div>
+                            <label for="cos" class="block text-sm font-medium text-gray-700 mb-1">
+                                功率因数 (cosφ)
+                            </label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <i class="fa fa-balance-scale text-gray-400"></i>
+                                </div>
+                                <input 
+                                    type="number" 
+                                    id="cos" 
+                                    name="cos" 
+                                    step="0.01" 
+                                    min="0.1" 
+                                    max="1.0" 
+                                    required
+                                    value="{{ cos if cos is not none else '' }}"
+                                    class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg input-focus"
+                                    placeholder="例如：0.8"
+                                >
+                            </div>
+                        </div>
+                        
+                        <!-- 计算按钮 -->
+                        <div class="pt-2">
+                            <button 
+                                type="submit" 
+                                class="w-full bg-primary text-white py-3 px-4 rounded-lg font-medium btn-hover flex items-center justify-center"
+                            >
+                                <i class="fa fa-calculator mr-2"></i> 计算结果
+                            </button>
+                        </div>
+                    </form>
+                </div>
+                
+                <!-- 结果展示卡片 -->
+                <div class="bg-white rounded-xl p-6 card-shadow transform transition-all duration-300 hover:shadow-xl">
+                    <h2 class="text-lg md:text-xl font-semibold text-dark mb-6 flex items-center">
+                        <i class="fa fa-bar-chart text-primary mr-2"></i>计算结果
+                    </h2>
+                    
+                    {% if pjs is not none and ljs is not none %}
+                        <!-- 输入参数回顾 -->
+                        <div class="bg-neutral p-4 rounded-lg mb-6">
+                            <h3 class="text-sm font-medium text-gray-500 mb-2">输入参数：</h3>
+                            <div class="grid grid-cols-3 gap-2 text-sm">
+                                <div class="text-center">
+                                    <div class="text-gray-500">Pe</div>
+                                    <div class="font-medium">{{ pe }} kW</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="text-gray-500">Kx</div>
+                                    <div class="font-medium">{{ kx }}</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="text-gray-500">cosφ</div>
+                                    <div class="font-medium">{{ cos }}</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 计算结果 -->
+                        <div class="space-y-6">
+                            <!-- Pjs结果 -->
+                            <div class="border border-gray-100 rounded-lg p-5 bg-gradient-to-br from-blue-50 to-white">
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-sm font-medium text-gray-600">有功功率 (Pjs)</span>
+                                    <span class="text-xs px-2 py-1 bg-blue-100 text-primary rounded-full">kW</span>
+                                </div>
+                                <div class="text-3xl md:text-4xl font-bold text-primary">{{ pjs }}</div>
+                                <div class="text-xs text-gray-500 mt-1">
+                                    计算公式：Pjs = Pe × Kx
+                                </div>
+                            </div>
+                            
+                            <!-- Ijs结果 -->
+                            <div class="border border-gray-100 rounded-lg p-5 bg-gradient-to-br from-green-50 to-white">
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-sm font-medium text-gray-600">计算电流 (Ijs)</span>
+                                    <span class="text-xs px-2 py-1 bg-green-100 text-green-600 rounded-full">A</span>
+                                </div>
+                                <div class="text-3xl md:text-4xl font-bold text-green-600">{{ ljs }}</div>
+                                <div class="text-xs text-gray-500 mt-1">
+                                    计算公式：Ijs = Pjs × 1000 / (1.732 × 380 × cosφ)
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 重新计算按钮 -->
+                        <div class="mt-6">
+                            <button 
+                                onclick="window.location.href='/';"
+                                class="w-full bg-gray-100 text-gray-700 py-2 px-4 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+                            >
+                                <i class="fa fa-refresh mr-1"></i> 重新计算
+                            </button>
+                        </div>
+                    {% else %}
+                        <!-- 初始提示 -->
+                        <div class="h-full flex flex-col items-center justify-center p-6 text-center text-gray-500">
+                            <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                                <i class="fa fa-lightbulb-o text-2xl"></i>
+                            </div>
+                            <p>请在左侧输入参数并点击"计算结果"按钮</p>
+                            <p class="text-xs mt-2">系统将自动计算有功功率和电流值</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 页脚 -->
+    <footer class="bg-dark text-white py-6 mt-12">
+        <div class="container mx-auto px-4 text-center text-sm">
+            <p>© 2023 电力负荷计算工具 | 专业的电气计算辅助工具</p>
+            <p class="mt-1 text-gray-400">三相380V系统计算标准</p>
+        </div>
+    </footer>
+</body>
+</html>
+    
