@@ -1,42 +1,48 @@
-name: auto_power  # 工作流名称，保持不变
-
-# 触发条件：仅在 main 分支推送代码时触发（移除 pull_request，避免不必要构建）
+name: auto_power
 on:
   push:
-    branches: [ "main" ]  # 仅 main 分支推送时执行
-    # 可选：仅当特定文件修改时触发（避免无关代码变动触发构建，如只监听 Dockerfile 和项目核心文件）
+    branches: [ "main" ]
     paths:
-      - 'Dockerfile'       # Dockerfile 变动
-      - 'main.py'          # 项目核心代码变动
-      - 'requirements.txt' # 依赖变动
-      - '.github/workflows/**' # 工作流文件自身变动
+      - 'Dockerfile'
+      - 'main.py'
+      - 'requirements.txt'
+      - '.github/workflows/**'
 
 jobs:
-  build-and-push:  # 任务名：构建并推送镜像（更清晰）
-    runs-on: ubuntu-latest  # 运行环境：Ubuntu 最新版
+  build-and-push:
+    runs-on: ubuntu-latest
+    # 提前定义镜像名前缀（减少重复编写，便于验证）
+    env:
+      IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/auto-power
     steps:
-      # 步骤1：检出 GitHub 仓库代码（官方 Action，稳定可靠）
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 步骤2：登录 Docker Hub（关键！需先在 GitHub Secrets 配置凭证）
+      # 新增步骤：验证 Secret 和镜像名格式（关键！提前排查空值）
+      - name: Verify Secret and Image Name
+        run: |
+          echo "Docker Hub Username: ${{ secrets.DOCKERHUB_USERNAME }}"
+          echo "Full Image Name (latest): ${{ env.IMAGE_NAME }}:latest"
+          # 若镜像名开头是 "/" 或包含非法字符，直接报错退出
+          if [[ "${{ env.IMAGE_NAME }}" == "/"* || "${{ env.IMAGE_NAME }}" == "" ]]; then
+            echo "Error: DOCKERHUB_USERNAME is empty or invalid!"
+            exit 1
+          fi
+
       - name: Login to Docker Hub
-        uses: docker/login-action@v3  # 官方 Docker 登录 Action
+        uses: docker/login-action@v3
         with:
-          # 从 GitHub Secrets 读取 Docker Hub 用户名（避免明文暴露）
           username: ${{ secrets.DOCKERHUB_USERNAME }}
-          # 从 GitHub Secrets 读取 Docker Hub 访问令牌（替代密码，更安全）
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 步骤3：构建 Docker 镜像 + 推送到 Docker Hub（核心步骤）
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
           push: true
-          # 直接引用提前定义的环境变量，无 YAML 解析冲突
+          # 直接引用提前定义的 env.IMAGE_NAME，减少拼接错误
           tags: |
-            ${{ env.IMAGE_PREFIX }}:latest
-            ${{ env.IMAGE_PREFIX }}:${{ github.sha }}
-            ${{ env.IMAGE_PREFIX }}:main-${{ env.SHORT_SHA }}
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:main-${{ (github.sha)[:8] }}  # 用括号避免 YAML 解析冲突
