@@ -30,16 +30,13 @@ jobs:
 
       # 步骤3：构建 Docker 镜像 + 推送到 Docker Hub（核心步骤）
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5  # 官方构建+推送 Action（比手动 docker 命令更规范）
+        uses: docker/build-push-action@v5
         with:
-          context: .  # 构建上下文：仓库根目录（即 Dockerfile 所在路径，保持不变）
-          file: ./Dockerfile  # Dockerfile 路径（确保与实际文件位置一致，默认根目录）
-          push: true  # 开启“构建后自动推送镜像”（核心开关）
-          # 镜像标签设计：兼顾“版本追溯”和“易用性”（避免用 date +%s 这种无意义标签）
+          context: .
+          file: ./Dockerfile
+          push: true
+          # 直接引用提前定义的环境变量，无 YAML 解析冲突
           tags: |
-            # 1. 基础标签：Docker Hub 用户名/镜像名:latest（默认拉取最新版）
-            ${{ secrets.DOCKERHUB_USERNAME }}/auto-power:latest
-            # 2. 版本追溯标签1：用 Git Commit 哈希（唯一标识某次代码提交，便于回滚）
-            ${{ secrets.DOCKERHUB_USERNAME }}/auto-power:${{ github.sha }}
-            # 3. 版本追溯标签2：用分支名（若多分支构建，可区分环境，这里固定 main）
-            ${{ secrets.DOCKERHUB_USERNAME }}/auto-power:main-${{ github.sha[:8] }}
+            ${{ env.IMAGE_PREFIX }}:latest
+            ${{ env.IMAGE_PREFIX }}:${{ github.sha }}
+            ${{ env.IMAGE_PREFIX }}:main-${{ env.SHORT_SHA }}
