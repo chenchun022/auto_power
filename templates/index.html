@@ -3,250 +3,1346 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>电力负荷计算工具</title>
+    <title>{{ app_title }}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
-    
-    <!-- 配置Tailwind自定义颜色和字体 -->
     <script>
         tailwind.config = {
             theme: {
                 extend: {
                     colors: {
                         primary: '#165DFF',
-                        secondary: '#36CFC9',
-                        neutral: '#F5F7FA',
-                        dark: '#1D2129',
+                        accent: '#0FC6C2',
+                        surface: '#F5F7FA',
+                        ink: '#1D2129'
                     },
                     fontFamily: {
-                        sans: ['Inter', 'system-ui', 'sans-serif'],
-                    },
+                        sans: ['Inter', 'system-ui', 'sans-serif']
+                    }
                 }
             }
-        }
+        };
     </script>
-    
     <style type="text/tailwindcss">
         @layer utilities {
-            .content-auto {
-                content-visibility: auto;
-            }
             .card-shadow {
-                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+                box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
             }
-            .input-focus {
-                @apply focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none;
+            .input-base {
+                @apply w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-ink transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20;
             }
-            .btn-hover {
-                @apply hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300;
+            .icon-btn {
+                @apply inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition hover:border-primary hover:text-primary;
+            }
+            .nav-btn {
+                @apply inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition;
+            }
+            .nav-btn-active {
+                @apply bg-primary text-white shadow-sm;
+            }
+            .nav-btn-idle {
+                @apply bg-white text-gray-600 hover:bg-gray-100;
+            }
+            .section-band {
+                @apply rounded-lg border border-gray-200 bg-white;
             }
         }
     </style>
 </head>
-<body class="bg-gray-50 min-h-screen font-sans">
-    <!-- 顶部导航 -->
-    <header class="bg-white shadow-sm">
-        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
-            <div class="flex items-center space-x-2">
-                <i class="fa fa-bolt text-primary text-2xl"></i>
-                <h1 class="text-xl md:text-2xl font-bold text-dark">电力负荷计算工具</h1>
+<body class="min-h-screen bg-gray-50 font-sans text-ink">
+    <header class="border-b border-gray-200 bg-white">
+        <div class="mx-auto flex w-full max-w-none items-center justify-between px-6 py-4">
+            <div class="flex items-center gap-3">
+                <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <i class="fa fa-bolt text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-semibold">{{ app_title }}</h1>
+                    <p class="text-sm text-gray-500">负荷计算与电器系统图协同工具</p>
+                </div>
             </div>
-            <div class="text-sm text-gray-500">
-                专业电气计算 · 精准可靠
-            </div>
+            <div id="save-status" class="text-sm text-gray-500">准备就绪</div>
+        </div>
+        <div class="mx-auto flex w-full max-w-none gap-2 px-6 pb-4">
+            <button class="nav-btn nav-btn-active" data-view-btn="load-calculator">
+                <i class="fa fa-calculator"></i>
+                <span>负荷计算</span>
+            </button>
+            <button class="nav-btn nav-btn-idle" data-view-btn="diagram">
+                <i class="fa fa-table"></i>
+                <span>电器系统图计算</span>
+            </button>
+            <button class="nav-btn nav-btn-idle" data-view-btn="settings">
+                <i class="fa fa-cog"></i>
+                <span>设置</span>
+            </button>
         </div>
     </header>
 
-    <!-- 主要内容区 -->
-    <main class="container mx-auto px-4 py-8 md:py-12">
-        <div class="max-w-5xl mx-auto">
-            <!-- 说明卡片 -->
-            <div class="bg-blue-50 border-l-4 border-primary p-4 mb-8 rounded-r">
-                <div class="flex items-start">
-                    <i class="fa fa-info-circle text-primary mt-1 mr-3"></i>
-                    <p class="text-sm text-gray-700">
-                        本工具用于计算电力系统中的有功功率(Pjs)和计算电流(Ijs)，适用于三相380V供电系统。
-                        请输入额定功率(Pe)、需要系数(Kx)和功率因数(cosφ)进行计算。
-                    </p>
-                </div>
+    <main class="mx-auto w-full max-w-none px-6 py-6">
+        <section data-view="load-calculator" class="space-y-6">
+            <div class="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-gray-700">
+                这个页面保留原有负荷计算能力；系统图模块、项目草稿和配置中心已拆到独立页签。
             </div>
-            
-            <!-- 计算区域 -->
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <!-- 输入表单卡片 -->
-                <div class="bg-white rounded-xl p-6 card-shadow transform transition-all duration-300 hover:shadow-xl">
-                    <h2 class="text-lg md:text-xl font-semibold text-dark mb-6 flex items-center">
-                        <i class="fa fa-calculator text-primary mr-2"></i>输入参数
+            <div class="grid gap-6 xl:grid-cols-2">
+                <div class="section-band p-6 card-shadow">
+                    <h2 class="mb-6 flex items-center gap-2 text-lg font-semibold">
+                        <i class="fa fa-sliders text-primary"></i>
+                        <span>输入参数</span>
                     </h2>
-                    
                     <form action="/calculate" method="post" class="space-y-5">
-                        <!-- Pe输入 -->
                         <div>
-                            <label for="pe" class="block text-sm font-medium text-gray-700 mb-1">
-                                额定功率 (Pe, kW)
-                            </label>
-                            <div class="relative">
-                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                    <i class="fa fa-watt text-gray-400"></i>
-                                </div>
-                                <input 
-                                    type="number" 
-                                    id="pe" 
-                                    name="pe" 
-                                    step="0.01" 
-                                    min="0.01" 
-                                    required
-                                    value="{{ pe if pe is not none else '' }}"
-                                    class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg input-focus"
-                                    placeholder="例如：46.7"
-                                >
-                            </div>
+                            <label for="pe" class="mb-1 block text-sm font-medium text-gray-700">额定功率 (Pe, kW)</label>
+                            <input id="pe" name="pe" type="number" min="0.01" step="0.01" required value="{{ pe if pe is defined and pe is not none else '' }}" class="input-base" placeholder="例如 46.7">
                         </div>
-                        
-                        <!-- Kx输入 -->
                         <div>
-                            <label for="kx" class="block text-sm font-medium text-gray-700 mb-1">
-                                需要系数 (Kx)
-                            </label>
-                            <div class="relative">
-                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                    <i class="fa fa-percent text-gray-400"></i>
-                                </div>
-                                <input 
-                                    type="number" 
-                                    id="kx" 
-                                    name="kx" 
-                                    step="0.01" 
-                                    min="0.01" 
-                                    max="1.0" 
-                                    required
-                                    value="{{ kx if kx is not none else '' }}"
-                                    class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg input-focus"
-                                    placeholder="例如：0.9"
-                                >
-                            </div>
+                            <label for="kx" class="mb-1 block text-sm font-medium text-gray-700">需要系数 (Kx)</label>
+                            <input id="kx" name="kx" type="number" min="0.01" max="1" step="0.01" required value="{{ kx if kx is defined and kx is not none else '' }}" class="input-base" placeholder="例如 0.9">
                         </div>
-                        
-                        <!-- cos输入 -->
                         <div>
-                            <label for="cos" class="block text-sm font-medium text-gray-700 mb-1">
-                                功率因数 (cosφ)
-                            </label>
-                            <div class="relative">
-                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                    <i class="fa fa-balance-scale text-gray-400"></i>
-                                </div>
-                                <input 
-                                    type="number" 
-                                    id="cos" 
-                                    name="cos" 
-                                    step="0.01" 
-                                    min="0.1" 
-                                    max="1.0" 
-                                    required
-                                    value="{{ cos if cos is not none else '' }}"
-                                    class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg input-focus"
-                                    placeholder="例如：0.8"
-                                >
-                            </div>
+                            <label for="cos" class="mb-1 block text-sm font-medium text-gray-700">功率因数 (cosφ)</label>
+                            <input id="cos" name="cos" type="number" min="0.1" max="1" step="0.01" required value="{{ cos if cos is defined and cos is not none else '' }}" class="input-base" placeholder="例如 0.8">
                         </div>
-                        
-                        <!-- 计算按钮 -->
-                        <div class="pt-2">
-                            <button 
-                                type="submit" 
-                                class="w-full bg-primary text-white py-3 px-4 rounded-lg font-medium btn-hover flex items-center justify-center"
-                            >
-                                <i class="fa fa-calculator mr-2"></i> 计算结果
-                            </button>
-                        </div>
+                        <button type="submit" class="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white transition hover:bg-primary/90">
+                            <i class="fa fa-calculator"></i>
+                            <span>计算结果</span>
+                        </button>
                     </form>
                 </div>
-                
-                <!-- 结果展示卡片 -->
-                <div class="bg-white rounded-xl p-6 card-shadow transform transition-all duration-300 hover:shadow-xl">
-                    <h2 class="text-lg md:text-xl font-semibold text-dark mb-6 flex items-center">
-                        <i class="fa fa-bar-chart text-primary mr-2"></i>计算结果
+                <div class="section-band p-6 card-shadow">
+                    <h2 class="mb-6 flex items-center gap-2 text-lg font-semibold">
+                        <i class="fa fa-line-chart text-primary"></i>
+                        <span>计算结果</span>
                     </h2>
-                    
-                    {% if pjs is not none and ljs is not none %}
-                        <!-- 输入参数回顾 -->
-                        <div class="bg-neutral p-4 rounded-lg mb-6">
-                            <h3 class="text-sm font-medium text-gray-500 mb-2">输入参数：</h3>
-                            <div class="grid grid-cols-3 gap-2 text-sm">
-                                <div class="text-center">
-                                    <div class="text-gray-500">Pe</div>
-                                    <div class="font-medium">{{ pe }} kW</div>
-                                </div>
-                                <div class="text-center">
-                                    <div class="text-gray-500">Kx</div>
-                                    <div class="font-medium">{{ kx }}</div>
-                                </div>
-                                <div class="text-center">
-                                    <div class="text-gray-500">cosφ</div>
-                                    <div class="font-medium">{{ cos }}</div>
-                                </div>
+                    {% if pjs is defined and pjs is not none and ljs is defined and ljs is not none %}
+                        <div class="mb-5 grid grid-cols-3 gap-3 rounded-lg bg-surface p-4 text-sm">
+                            <div class="rounded-lg bg-white p-3 text-center">
+                                <div class="text-gray-500">Pe</div>
+                                <div class="mt-1 font-semibold">{{ pe }} kW</div>
+                            </div>
+                            <div class="rounded-lg bg-white p-3 text-center">
+                                <div class="text-gray-500">Kx</div>
+                                <div class="mt-1 font-semibold">{{ kx }}</div>
+                            </div>
+                            <div class="rounded-lg bg-white p-3 text-center">
+                                <div class="text-gray-500">cosφ</div>
+                                <div class="mt-1 font-semibold">{{ cos }}</div>
                             </div>
                         </div>
-                        
-                        <!-- 计算结果 -->
-                        <div class="space-y-6">
-                            <!-- Pjs结果 -->
-                            <div class="border border-gray-100 rounded-lg p-5 bg-gradient-to-br from-blue-50 to-white">
-                                <div class="flex items-center justify-between mb-2">
-                                    <span class="text-sm font-medium text-gray-600">有功功率 (Pjs)</span>
-                                    <span class="text-xs px-2 py-1 bg-blue-100 text-primary rounded-full">kW</span>
-                                </div>
-                                <div class="text-3xl md:text-4xl font-bold text-primary">{{ pjs }}</div>
-                                <div class="text-xs text-gray-500 mt-1">
-                                    计算公式：Pjs = Pe × Kx
-                                </div>
+                        <div class="space-y-4">
+                            <div class="rounded-lg border border-blue-100 bg-blue-50 p-5">
+                                <div class="text-sm text-gray-600">有功功率 (Pjs)</div>
+                                <div class="mt-2 text-3xl font-semibold text-primary">{{ pjs }}</div>
+                                <div class="mt-1 text-xs text-gray-500">Pjs = Pe × Kx</div>
                             </div>
-                            
-                            <!-- Ijs结果 -->
-                            <div class="border border-gray-100 rounded-lg p-5 bg-gradient-to-br from-green-50 to-white">
-                                <div class="flex items-center justify-between mb-2">
-                                    <span class="text-sm font-medium text-gray-600">计算电流 (Ijs)</span>
-                                    <span class="text-xs px-2 py-1 bg-green-100 text-green-600 rounded-full">A</span>
-                                </div>
-                                <div class="text-3xl md:text-4xl font-bold text-green-600">{{ ljs }}</div>
-                                <div class="text-xs text-gray-500 mt-1">
-                                    计算公式：Ijs = Pjs × 1000 / (1.732 × 380 × cosφ)
-                                </div>
+                            <div class="rounded-lg border border-emerald-100 bg-emerald-50 p-5">
+                                <div class="text-sm text-gray-600">计算电流 (Ijs)</div>
+                                <div class="mt-2 text-3xl font-semibold text-emerald-600">{{ ljs }}</div>
+                                <div class="mt-1 text-xs text-gray-500">Ijs = Pjs × 1000 / (1.732 × 380 × cosφ)</div>
                             </div>
-                        </div>
-                        
-                        <!-- 重新计算按钮 -->
-                        <div class="mt-6">
-                            <button 
-                                onclick="window.location.href='/';"
-                                class="w-full bg-gray-100 text-gray-700 py-2 px-4 rounded-lg font-medium hover:bg-gray-200 transition-colors"
-                            >
-                                <i class="fa fa-refresh mr-1"></i> 重新计算
-                            </button>
                         </div>
                     {% else %}
-                        <!-- 初始提示 -->
-                        <div class="h-full flex flex-col items-center justify-center p-6 text-center text-gray-500">
-                            <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                                <i class="fa fa-lightbulb-o text-2xl"></i>
-                            </div>
-                            <p>请在左侧输入参数并点击"计算结果"按钮</p>
-                            <p class="text-xs mt-2">系统将自动计算有功功率和电流值</p>
+                        <div class="flex min-h-[280px] items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50 text-sm text-gray-500">
+                            等待输入参数后计算
                         </div>
                     {% endif %}
                 </div>
             </div>
-        </div>
+        </section>
+
+        <section data-view="diagram" class="hidden space-y-6">
+            <div class="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+                <aside class="section-band p-4 card-shadow">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h2 class="text-base font-semibold">项目库</h2>
+                            <p class="text-xs text-gray-500">自动保存草稿，支持复制另存</p>
+                        </div>
+                        <button id="create-project-btn" class="icon-btn" title="新建项目">
+                            <i class="fa fa-plus"></i>
+                        </button>
+                    </div>
+                    <div class="mt-4 space-y-3">
+                        <label class="block text-xs font-medium uppercase tracking-wide text-gray-500">项目名称</label>
+                        <input id="project-name" class="input-base" placeholder="请输入项目名称">
+                    </div>
+                    <div class="mt-3 space-y-2">
+                        <label class="block text-xs font-medium uppercase tracking-wide text-gray-500">备注</label>
+                        <textarea id="project-description" class="input-base min-h-[88px] resize-none" placeholder="项目说明、版本信息"></textarea>
+                    </div>
+                    <div class="mt-4 flex gap-2">
+                        <button id="save-project-btn" class="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white transition hover:bg-primary/90">
+                            <i class="fa fa-save"></i>
+                            <span>保存</span>
+                        </button>
+                        <button id="duplicate-project-btn" class="inline-flex items-center justify-center rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 transition hover:border-primary hover:text-primary">
+                            <i class="fa fa-files-o"></i>
+                        </button>
+                        <button id="delete-project-btn" class="inline-flex items-center justify-center rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 transition hover:border-red-400 hover:text-red-500" title="删除项目">
+                            <i class="fa fa-trash"></i>
+                        </button>
+                    </div>
+                    <div id="project-list" class="mt-4 space-y-2"></div>
+                </aside>
+
+                <div class="min-w-0 space-y-6">
+                    <section class="section-band p-4 card-shadow">
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <h2 class="text-base font-semibold">电器系统图计算</h2>
+                                <p class="text-sm text-gray-500">支持分组编辑、自动排序、自动保存与相序平衡</p>
+                            </div>
+                            <button id="rebalance-btn" class="inline-flex items-center gap-2 rounded-lg border border-primary px-3 py-2 text-sm font-medium text-primary transition hover:bg-primary/5">
+                                <i class="fa fa-random"></i>
+                                <span>计算相序</span>
+                            </button>
+                        </div>
+
+                        <div class="mt-4 grid gap-3 xl:grid-cols-8">
+                            <div class="rounded-lg bg-surface p-4 xl:col-span-2">
+                                <div class="grid gap-3 md:grid-cols-2">
+                                    <div>
+                                        <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">Kx</label>
+                                        <input id="diagram-kx" type="number" min="0" step="0.01" class="input-base">
+                                    </div>
+                                    <div>
+                                        <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">cos</label>
+                                        <input id="diagram-cos" type="number" min="0.1" max="1" step="0.01" class="input-base">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="rounded-lg bg-surface p-4">
+                                <div class="text-xs uppercase tracking-wide text-gray-500">总容量</div>
+                                <div id="summary-total" class="mt-2 text-2xl font-semibold text-primary">0 kW</div>
+                            </div>
+                            <div class="rounded-lg bg-surface p-4">
+                                <div class="text-xs uppercase tracking-wide text-gray-500">Pjs</div>
+                                <div id="summary-pjs" class="mt-2 text-2xl font-semibold text-sky-600">0 kW</div>
+                            </div>
+                            <div class="rounded-lg bg-surface p-4">
+                                <div class="text-xs uppercase tracking-wide text-gray-500">Ijs</div>
+                                <div id="summary-ijs" class="mt-2 text-2xl font-semibold text-emerald-600">0 A</div>
+                            </div>
+                            <div class="rounded-lg bg-surface p-4">
+                                <div class="text-xs uppercase tracking-wide text-gray-500">L1 / L2 / L3</div>
+                                <div id="summary-phases" class="mt-2 text-sm font-medium text-gray-700">0 / 0 / 0</div>
+                            </div>
+                            <div class="rounded-lg bg-surface p-4">
+                                <div class="text-xs uppercase tracking-wide text-gray-500">最大相差</div>
+                                <div id="summary-diff" class="mt-2 text-2xl font-semibold text-amber-600">0</div>
+                            </div>
+                            <div class="rounded-lg bg-surface p-4">
+                                <div class="text-xs uppercase tracking-wide text-gray-500">回路总数</div>
+                                <div id="summary-count" class="mt-2 text-2xl font-semibold text-gray-800">0</div>
+                            </div>
+                            <div class="rounded-lg bg-surface p-4 xl:col-span-8">
+                                <div class="grid gap-3 md:grid-cols-2">
+                                    <div>
+                                        <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">空气开关品牌筛选</label>
+                                        <select id="breaker-brand-filter" class="input-base"></select>
+                                    </div>
+                                    <div>
+                                        <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">线型品牌筛选</label>
+                                        <select id="wire-brand-filter" class="input-base"></select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <div id="diagram-groups" class="space-y-6"></div>
+                </div>
+            </div>
+        </section>
+
+        <section data-view="settings" class="hidden">
+            <div class="space-y-6" id="settings-panels"></div>
+        </section>
     </main>
 
-    <!-- 页脚 -->
-    <footer class="bg-dark text-white py-6 mt-12">
-        <div class="container mx-auto px-4 text-center text-sm">
-            <p>© 2023 电力负荷计算工具 | 专业的电气计算辅助工具</p>
-            <p class="mt-1 text-gray-400">三相380V系统计算标准</p>
-        </div>
-    </footer>
+    <template id="project-item-template">
+        <button class="w-full rounded-lg border border-gray-200 bg-white px-3 py-3 text-left transition hover:border-primary hover:bg-primary/5">
+            <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                    <div class="truncate text-sm font-medium text-gray-800" data-role="name"></div>
+                    <div class="mt-1 truncate text-xs text-gray-500" data-role="time"></div>
+                </div>
+                <i class="fa fa-angle-right text-gray-400"></i>
+            </div>
+        </button>
+    </template>
+
+    <template id="setting-panel-template">
+        <section class="section-band p-5 card-shadow">
+            <div class="mb-4">
+                <h2 class="text-base font-semibold" data-role="label"></h2>
+                <p class="text-sm text-gray-500">结构化录入，保存后自动生成展示值，并同步到系统图下拉中。</p>
+            </div>
+            <div data-role="form" class="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4"></div>
+            <div data-role="list" class="mt-4 space-y-3"></div>
+        </section>
+    </template>
+
+    <script>
+        const GROUP_META = {{ group_meta | tojson }};
+        const CONFIG_FORMS = {
+            breaker_options: {
+                kind: 'breaker',
+                fields: [
+                    { key: 'brand', label: '品牌', placeholder: '例如 施耐德' },
+                    { key: 'series', label: '系列', placeholder: '例如 iC65N' },
+                    { key: 'poles', label: '极数', placeholder: '例如 2P' },
+                    { key: 'ampere', label: '电流', placeholder: '例如 10A' },
+                    { key: 'leakage', label: '漏保', placeholder: '例如 vigi30mA' },
+                    { key: 'note', label: '备注说明', placeholder: '详细说明，帮助识别用途' }
+                ]
+            },
+            wire_options: {
+                kind: 'wire',
+                fields: [
+                    { key: 'brand', label: '线型', placeholder: '例如 WDZB-BYJ' },
+                    { key: 'spec', label: '规格', placeholder: '例如 2×2.5mm²' },
+                    { key: 'conduit', label: '敷设方式', placeholder: '例如 KBG-D20' },
+                    { key: 'note', label: '备注说明', placeholder: '详细说明，帮助识别用途' }
+                ]
+            },
+            socket_options: {
+                kind: 'simple',
+                fields: [
+                    { key: 'label', label: '插座类型', placeholder: '例如 10A五孔' },
+                    { key: 'note', label: '备注说明', placeholder: '详细说明，帮助识别用途' }
+                ]
+            }
+        };
+
+        const state = {
+            currentView: 'load-calculator',
+            configs: { categories: [] },
+            projects: [],
+            activeProject: null,
+            autoSaveTimer: null,
+            rebalanceTimer: null,
+            focusRequest: null
+        };
+
+        const fieldOrder = [
+            'breaker_option',
+            'wire_option',
+            'usage',
+            'capacity_kw',
+            'voltage',
+            'socket_type'
+        ];
+
+        const viewButtons = Array.from(document.querySelectorAll('[data-view-btn]'));
+        const views = Array.from(document.querySelectorAll('[data-view]'));
+        const saveStatusEl = document.getElementById('save-status');
+        const projectListEl = document.getElementById('project-list');
+        const groupContainerEl = document.getElementById('diagram-groups');
+        const settingsPanelsEl = document.getElementById('settings-panels');
+        const projectNameEl = document.getElementById('project-name');
+        const projectDescriptionEl = document.getElementById('project-description');
+        const breakerFilterEl = document.getElementById('breaker-brand-filter');
+        const wireFilterEl = document.getElementById('wire-brand-filter');
+        const diagramKxEl = document.getElementById('diagram-kx');
+        const diagramCosEl = document.getElementById('diagram-cos');
+
+        function setSaveStatus(text, tone = 'idle') {
+            saveStatusEl.textContent = text;
+            saveStatusEl.className = 'text-sm';
+            if (tone === 'success') {
+                saveStatusEl.classList.add('text-emerald-600');
+            } else if (tone === 'error') {
+                saveStatusEl.classList.add('text-red-600');
+            } else if (tone === 'pending') {
+                saveStatusEl.classList.add('text-amber-600');
+            } else {
+                saveStatusEl.classList.add('text-gray-500');
+            }
+        }
+
+        function switchView(view) {
+            state.currentView = view;
+            views.forEach((section) => {
+                section.classList.toggle('hidden', section.dataset.view !== view);
+            });
+            viewButtons.forEach((button) => {
+                const active = button.dataset.viewBtn === view;
+                button.classList.toggle('nav-btn-active', active);
+                button.classList.toggle('nav-btn-idle', !active);
+            });
+        }
+
+        viewButtons.forEach((button) => {
+            button.addEventListener('click', () => switchView(button.dataset.viewBtn));
+        });
+
+        async function apiFetch(url, options = {}) {
+            const response = await fetch(url, {
+                headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+                ...options
+            });
+            if (!response.ok) {
+                let message = '请求失败';
+                try {
+                    const error = await response.json();
+                    message = error.detail || message;
+                } catch (err) {
+                    message = response.statusText || message;
+                }
+                throw new Error(message);
+            }
+            return response.json();
+        }
+
+        function activeProject() {
+            return state.activeProject;
+        }
+
+        function escapeHtml(text) {
+            return String(text ?? '')
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#039;');
+        }
+
+        function getCategory(key) {
+            return state.configs.categories.find((item) => item.key === key);
+        }
+
+        function getConfigOptions(key) {
+            return getCategory(key)?.items || [];
+        }
+
+        function filteredOptions(key) {
+            const project = activeProject();
+            const options = getConfigOptions(key);
+            if (!project) {
+                return options;
+            }
+            if (key === 'breaker_options' && project.data.filters.breaker_brand) {
+                return options.filter((item) => item.brand === project.data.filters.breaker_brand);
+            }
+            if (key === 'wire_options' && project.data.filters.wire_brand) {
+                return options.filter((item) => item.brand === project.data.filters.wire_brand);
+            }
+            return options;
+        }
+
+        function createSelect(options, value, attrs = '') {
+            const html = options.map((item) => `<option value="${escapeHtml(item.value)}" ${item.value === value ? 'selected' : ''}>${escapeHtml(item.value)}</option>`).join('');
+            return `<select class="input-base" ${attrs}><option value=""></option>${html}</select>`;
+        }
+
+        function createEmptyRow(groupCode) {
+            return {
+                id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+                group_type: groupCode,
+                sequence: 0,
+                circuit_code: '',
+                breaker_option: '',
+                wire_option: '',
+                phase_sequence: '',
+                usage: '',
+                capacity_kw: '',
+                voltage: '220',
+                socket_type: ''
+            };
+        }
+
+        function ensureProjectDataShape(project) {
+            if (!project.data) {
+                project.data = { groups: {}, summary: {}, filters: {}, load_factors: {} };
+            }
+            if (!project.data.groups) {
+                project.data.groups = {};
+            }
+            if (!project.data.filters) {
+                project.data.filters = {};
+            }
+            if (!project.data.load_factors) {
+                project.data.load_factors = {};
+            }
+            if (project.data.filters.breaker_brand === undefined) {
+                project.data.filters.breaker_brand = '';
+            }
+            if (project.data.filters.wire_brand === undefined) {
+                project.data.filters.wire_brand = '';
+            }
+            if (project.data.load_factors.kx === undefined) {
+                project.data.load_factors.kx = 1;
+            }
+            if (project.data.load_factors.cos === undefined) {
+                project.data.load_factors.cos = 0.8;
+            }
+            Object.keys(GROUP_META).forEach((groupCode) => {
+                if (!Array.isArray(project.data.groups[groupCode])) {
+                    project.data.groups[groupCode] = [];
+                }
+            });
+            if (!project.data.summary) {
+                project.data.summary = {
+                    phase_totals: { L1: 0, L2: 0, L3: 0 },
+                    phase_difference: 0,
+                    total_capacity_kw: 0,
+                    pjs_kw: 0,
+                    ijs_a: 0,
+                    row_count: 0
+                };
+            }
+        }
+
+        function attrString(groupCode, rowIndex, field) {
+            return `data-group="${groupCode}" data-row-index="${rowIndex}" data-field="${field}"`;
+        }
+
+        function renderProjects() {
+            projectListEl.innerHTML = '';
+            const template = document.getElementById('project-item-template');
+            state.projects.forEach((project) => {
+                const fragment = template.content.cloneNode(true);
+                const button = fragment.querySelector('button');
+                fragment.querySelector('[data-role="name"]').textContent = project.name;
+                fragment.querySelector('[data-role="time"]').textContent = `更新于 ${project.updated_at}`;
+                if (state.activeProject && state.activeProject.id === project.id) {
+                    button.classList.add('border-primary', 'bg-primary/5');
+                }
+                button.addEventListener('click', () => loadProject(project.id));
+                projectListEl.appendChild(fragment);
+            });
+        }
+
+        function renderSummary() {
+            const summary = activeProject()?.data?.summary || { phase_totals: { L1: 0, L2: 0, L3: 0 }, phase_difference: 0, total_capacity_kw: 0, pjs_kw: 0, ijs_a: 0, row_count: 0 };
+            const loadFactors = activeProject()?.data?.load_factors || { kx: 1, cos: 0.8 };
+            document.getElementById('summary-total').textContent = `${summary.total_capacity_kw || 0} kW`;
+            document.getElementById('summary-pjs').textContent = `${summary.pjs_kw || 0} kW`;
+            document.getElementById('summary-ijs').textContent = `${summary.ijs_a || 0} A`;
+            document.getElementById('summary-phases').textContent = `${summary.phase_totals?.L1 || 0} / ${summary.phase_totals?.L2 || 0} / ${summary.phase_totals?.L3 || 0}`;
+            document.getElementById('summary-diff').textContent = summary.phase_difference || 0;
+            document.getElementById('summary-count').textContent = summary.row_count || 0;
+            diagramKxEl.value = loadFactors.kx ?? 1;
+            diagramCosEl.value = loadFactors.cos ?? 0.8;
+        }
+
+        function renderFilterOptions() {
+            const project = activeProject();
+            if (!project) {
+                return;
+            }
+            const breakerBrands = getCategory('breaker_options')?.brands || [];
+            const wireBrands = getCategory('wire_options')?.brands || [];
+            breakerFilterEl.innerHTML = `<option value="">全部品牌</option>${breakerBrands.map((brand) => `<option value="${escapeHtml(brand)}">${escapeHtml(brand)}</option>`).join('')}`;
+            wireFilterEl.innerHTML = `<option value="">全部品牌</option>${wireBrands.map((brand) => `<option value="${escapeHtml(brand)}">${escapeHtml(brand)}</option>`).join('')}`;
+            breakerFilterEl.value = project.data.filters.breaker_brand || '';
+            wireFilterEl.value = project.data.filters.wire_brand || '';
+        }
+
+        function renderSettings() {
+            settingsPanelsEl.innerHTML = '';
+            const template = document.getElementById('setting-panel-template');
+
+            state.configs.categories.forEach((category) => {
+                const formSpec = CONFIG_FORMS[category.key];
+                const fragment = template.content.cloneNode(true);
+                const section = fragment.querySelector('section');
+                section.dataset.category = category.key;
+                section.querySelector('[data-role="label"]').textContent = category.label;
+                const formHost = section.querySelector('[data-role="form"]');
+                const listHost = section.querySelector('[data-role="list"]');
+
+                formHost.innerHTML = `
+                    <div class="grid gap-3 ${formSpec.kind === 'breaker' ? 'xl:grid-cols-6 md:grid-cols-3' : formSpec.kind === 'wire' ? 'xl:grid-cols-4 md:grid-cols-2' : 'md:grid-cols-2'}">
+                        ${formSpec.fields.map((field) => `
+                            <div class="${field.key === 'note' ? 'md:col-span-2 xl:col-span-2' : ''}">
+                                <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">${field.label}</label>
+                                <input class="input-base" data-new-field="${field.key}" placeholder="${field.placeholder}">
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div class="mt-4 flex items-center justify-between gap-3">
+                        <div class="text-sm text-gray-500" data-role="preview">保存后自动生成展示值</div>
+                        <button class="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white transition hover:bg-primary/90" data-role="add-btn">
+                            <i class="fa fa-plus"></i>
+                            <span>新增</span>
+                        </button>
+                    </div>
+                `;
+
+                const previewEl = formHost.querySelector('[data-role="preview"]');
+                const newInputs = Array.from(formHost.querySelectorAll('[data-new-field]'));
+                function readFormData() {
+                    return Object.fromEntries(newInputs.map((input) => [input.dataset.newField, input.value.trim()]));
+                }
+                function updatePreview() {
+                    const data = readFormData();
+                    previewEl.textContent = buildPreviewValue(category.key, data) || '保存后自动生成展示值';
+                }
+                newInputs.forEach((input) => input.addEventListener('input', updatePreview));
+                formHost.querySelector('[data-role="add-btn"]').addEventListener('click', async () => {
+                    const payload = readFormData();
+                    if (!hasPrimaryValue(category.key, payload)) {
+                        return;
+                    }
+                    await addConfigItem(category.key, payload);
+                    newInputs.forEach((input) => {
+                        input.value = '';
+                    });
+                    previewEl.textContent = '保存后自动生成展示值';
+                });
+
+                if (category.items.length) {
+                    const header = document.createElement('div');
+                    header.className = 'grid grid-cols-[72px_minmax(260px,1fr)_minmax(220px,1fr)_96px] gap-3 rounded-lg bg-surface px-4 py-3 text-sm font-medium text-gray-600';
+                    header.innerHTML = `
+                        <div class="text-left">序号</div>
+                        <div class="text-left">值</div>
+                        <div class="text-right">备注说明</div>
+                        <div class="text-right">编辑</div>
+                    `;
+                    listHost.appendChild(header);
+                }
+
+                category.items.forEach((item, index) => {
+                    const row = document.createElement('div');
+                    row.className = 'rounded-lg border border-gray-200 bg-white';
+                    row.innerHTML = `
+                        <div class="grid grid-cols-[72px_minmax(260px,1fr)_minmax(220px,1fr)_96px] items-center gap-3 px-4 py-3">
+                            <div class="text-left text-sm text-gray-600">${index + 1}</div>
+                            <div class="min-w-0 text-left text-sm font-medium text-gray-800">${escapeHtml(item.value)}</div>
+                            <div class="truncate text-right text-sm text-gray-500" title="${escapeHtml(item.note || '-')}">${escapeHtml(item.note || '-')}</div>
+                            <div class="flex justify-end">
+                                <button class="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 transition hover:border-primary hover:text-primary" data-action="toggle-edit">
+                                    <i class="fa fa-pencil"></i>
+                                    <span>编辑</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="hidden border-t border-gray-100 bg-gray-50 px-4 py-4" data-role="editor">
+                            <div class="grid gap-3 ${formSpec.kind === 'breaker' ? 'xl:grid-cols-6 md:grid-cols-3' : formSpec.kind === 'wire' ? 'xl:grid-cols-4 md:grid-cols-2' : 'md:grid-cols-2'}"></div>
+                            <div class="mt-3 rounded-lg bg-white px-3 py-2 text-sm text-gray-600">
+                                <div><span class="font-medium text-gray-700">展示值：</span><span data-role="preview-value">${escapeHtml(item.value)}</span></div>
+                            </div>
+                            <div class="mt-3 flex justify-end gap-2">
+                                <button class="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 transition hover:border-gray-300" data-action="cancel-edit">
+                                    <i class="fa fa-times"></i>
+                                    <span>取消</span>
+                                </button>
+                                <button class="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 transition hover:border-primary hover:text-primary" data-action="save-item">
+                                    <i class="fa fa-check"></i>
+                                    <span>保存</span>
+                                </button>
+                                <button class="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 transition hover:border-red-400 hover:text-red-500" data-action="delete-item">
+                                    <i class="fa fa-trash"></i>
+                                    <span>删除</span>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                    const editor = row.querySelector('[data-role="editor"]');
+                    const grid = editor.querySelector('.grid');
+                    const previewValue = editor.querySelector('[data-role="preview-value"]');
+                    const metadata = item.metadata || {};
+                    const rowInputs = {};
+
+                    formSpec.fields.forEach((field) => {
+                        const wrapper = document.createElement('div');
+                        if (field.key === 'note') {
+                            wrapper.className = 'md:col-span-2 xl:col-span-2';
+                        }
+                        wrapper.innerHTML = `
+                            <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">${field.label}</label>
+                            <input class="input-base" value="${escapeHtml(metadata[field.key] || (field.key === 'note' ? item.note || '' : ''))}">
+                        `;
+                        const input = wrapper.querySelector('input');
+                        rowInputs[field.key] = input;
+                        input.addEventListener('input', () => {
+                            const payload = Object.fromEntries(Object.entries(rowInputs).map(([key, inputEl]) => [key, inputEl.value.trim()]));
+                            previewValue.textContent = buildPreviewValue(category.key, payload) || '-';
+                        });
+                        grid.appendChild(wrapper);
+                    });
+
+                    row.querySelector('[data-action="toggle-edit"]').addEventListener('click', () => {
+                        editor.classList.remove('hidden');
+                    });
+                    row.querySelector('[data-action="cancel-edit"]').addEventListener('click', () => {
+                        editor.classList.add('hidden');
+                    });
+                    row.querySelector('[data-action="save-item"]').addEventListener('click', async () => {
+                        const payload = Object.fromEntries(Object.entries(rowInputs).map(([key, input]) => [key, input.value.trim()]));
+                        await updateConfigItem(item.id, payload);
+                    });
+                    row.querySelector('[data-action="delete-item"]').addEventListener('click', async () => {
+                        await deleteConfigItem(item.id);
+                    });
+                    listHost.appendChild(row);
+                });
+
+                settingsPanelsEl.appendChild(fragment);
+            });
+        }
+
+        function buildPreviewValue(categoryKey, data) {
+            if (categoryKey === 'breaker_options') {
+                const base = [data.series, data.poles, data.ampere].filter(Boolean).join('-');
+                return data.leakage ? `${base}+${data.leakage}` : base;
+            }
+            if (categoryKey === 'wire_options') {
+                return [data.brand, data.spec, data.conduit].filter(Boolean).join('  ');
+            }
+            return data.label || '';
+        }
+
+        function hasPrimaryValue(categoryKey, data) {
+            if (categoryKey === 'breaker_options') {
+                return data.brand && data.series && data.poles && data.ampere;
+            }
+            if (categoryKey === 'wire_options') {
+                return data.brand && data.spec;
+            }
+            return data.label;
+        }
+
+        function renderTableRow(groupCode, row, rowIndex) {
+            const tr = document.createElement('tr');
+            const breakerOptions = filteredOptions('breaker_options');
+            const wireOptions = filteredOptions('wire_options');
+            const socketOptions = getConfigOptions('socket_options');
+            tr.innerHTML = `
+                <td class="px-2 py-2 text-gray-500">${row.sequence}</td>
+                <td class="px-2 py-2"><div class="min-w-[320px]">${createSelect(breakerOptions, row.breaker_option, attrString(groupCode, rowIndex, 'breaker_option'))}</div></td>
+                <td class="px-2 py-2"><div class="min-w-[300px]">${createSelect(wireOptions, row.wire_option, attrString(groupCode, rowIndex, 'wire_option'))}</div></td>
+                <td class="px-2 py-2"><input class="input-base w-[88px] bg-gray-50 px-2" value="${escapeHtml(row.phase_sequence || '')}" readonly></td>
+                <td class="px-2 py-2"><input class="input-base w-[76px] bg-gray-50 px-2" value="${escapeHtml(row.circuit_code || '')}" readonly></td>
+                <td class="px-2 py-2"><input class="input-base min-w-[180px]" value="${escapeHtml(row.usage || '')}" data-group="${groupCode}" data-row-index="${rowIndex}" data-field="usage"></td>
+                <td class="px-2 py-2">
+                    <div class="flex min-w-[180px] gap-2">
+                        <input type="text" inputmode="decimal" autocomplete="off" pattern="^[0-9]*\\.?[0-9]*$" class="input-base w-[96px] px-2" value="${escapeHtml(String(row.capacity_kw ?? ''))}" data-group="${groupCode}" data-row-index="${rowIndex}" data-field="capacity_kw">
+                        <select class="input-base w-[84px] px-2" data-group="${groupCode}" data-row-index="${rowIndex}" data-field="voltage">
+                            <option value="220" ${row.voltage === '220' ? 'selected' : ''}>220V</option>
+                            <option value="380" ${row.voltage === '380' ? 'selected' : ''}>380V</option>
+                        </select>
+                    </div>
+                </td>
+                <td class="px-2 py-2"><div class="min-w-[150px]">${createSelect(socketOptions, row.socket_type, attrString(groupCode, rowIndex, 'socket_type'))}</div></td>
+                <td class="px-2 py-2">
+                    <div class="flex items-center gap-2">
+                        <button class="icon-btn" data-action="insert-row" data-group="${groupCode}" data-row-index="${rowIndex}" title="在下方新增一行">
+                            <i class="fa fa-plus"></i>
+                        </button>
+                        <button class="icon-btn" data-action="delete-row" data-group="${groupCode}" data-row-index="${rowIndex}" title="删除">
+                            <i class="fa fa-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            `;
+            wireRowEvents(tr);
+            return tr;
+        }
+
+        function renderDiagramGroups() {
+            const project = activeProject();
+            if (!project) {
+                return;
+            }
+            ensureProjectDataShape(project);
+            renderFilterOptions();
+            groupContainerEl.innerHTML = '';
+
+            Object.entries(GROUP_META).forEach(([groupCode, meta]) => {
+                const rows = project.data.groups[groupCode] || [];
+                const section = document.createElement('section');
+                section.className = 'section-band overflow-hidden card-shadow';
+                section.innerHTML = `
+                    <div class="border-b border-gray-200 px-4 py-4">
+                        <h3 class="text-base font-semibold">${meta.label}</h3>
+                        <p class="text-sm text-gray-500">${meta.description}</p>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200 text-sm">
+                            <thead class="bg-surface text-gray-600">
+                                <tr>
+                                    <th class="px-2 py-3 text-left font-medium">序号</th>
+                                    <th class="px-2 py-3 text-left font-medium">空气开关选择</th>
+                                    <th class="px-2 py-3 text-left font-medium">线型选择</th>
+                                    <th class="px-2 py-3 text-left font-medium">相序</th>
+                                    <th class="px-2 py-3 text-left font-medium">回路编号</th>
+                                    <th class="px-2 py-3 text-left font-medium">用途</th>
+                                    <th class="px-2 py-3 text-left font-medium">容量（kW）</th>
+                                    <th class="px-2 py-3 text-left font-medium">插座类型</th>
+                                    <th class="px-2 py-3 text-left font-medium">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100 bg-white"></tbody>
+                        </table>
+                    </div>
+                `;
+                const tbody = section.querySelector('tbody');
+                if (!rows.length) {
+                    const emptyTr = document.createElement('tr');
+                    emptyTr.innerHTML = `
+                        <td colspan="9" class="px-4 py-6">
+                            <div class="flex items-center justify-center gap-3 text-sm text-gray-400">
+                                <span>暂无回路</span>
+                                <button class="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 transition hover:border-primary hover:text-primary" data-empty-add="${groupCode}">
+                                    <i class="fa fa-plus"></i>
+                                    <span>新增一行</span>
+                                </button>
+                            </div>
+                        </td>
+                    `;
+                    emptyTr.querySelector('[data-empty-add]').addEventListener('click', () => addRow(groupCode, true));
+                    tbody.appendChild(emptyTr);
+                } else {
+                    rows.forEach((row, rowIndex) => {
+                        tbody.appendChild(renderTableRow(groupCode, row, rowIndex));
+                    });
+                }
+                groupContainerEl.appendChild(section);
+            });
+            renderSummary();
+        }
+
+        function findEditableCell(group, rowIndex, field) {
+            return document.querySelector(`[data-group="${group}"][data-row-index="${rowIndex}"][data-field="${field}"]`);
+        }
+
+        function captureFocusRequest(element, options = {}) {
+            if (!element?.dataset?.group || !element?.dataset?.field) {
+                return;
+            }
+            const selection = {
+                group: element.dataset.group,
+                rowIndex: Number(element.dataset.rowIndex),
+                field: element.dataset.field,
+                selectAll: Boolean(options.selectAll)
+            };
+            if (!selection.selectAll && typeof element.selectionStart === 'number') {
+                selection.start = element.selectionStart;
+                selection.end = element.selectionEnd;
+            }
+            state.focusRequest = selection;
+        }
+
+        function restoreFocusRequest() {
+            if (!state.focusRequest) {
+                return;
+            }
+            const request = state.focusRequest;
+            state.focusRequest = null;
+            requestAnimationFrame(() => {
+                const target = findEditableCell(request.group, request.rowIndex, request.field);
+                if (!target) {
+                    return;
+                }
+                target.focus();
+                if (request.selectAll && target.tagName === 'INPUT' && typeof target.select === 'function') {
+                    target.select();
+                    return;
+                }
+                if (typeof request.start === 'number' && typeof target.setSelectionRange === 'function') {
+                    try {
+                        target.setSelectionRange(request.start, request.end ?? request.start);
+                    } catch (error) {
+                        /* setSelectionRange 在某些输入类型上不可用，忽略即可 */
+                    }
+                }
+            });
+        }
+
+        function focusFirstCell(group, rowIndex) {
+            const next = findEditableCell(group, rowIndex, fieldOrder[0]);
+            if (next) {
+                next.focus();
+            }
+        }
+
+        function moveFocus(group, rowIndex, field, direction) {
+            const currentFieldIndex = fieldOrder.indexOf(field);
+            if (direction === 'next-cell') {
+                for (let idx = currentFieldIndex + 1; idx < fieldOrder.length; idx += 1) {
+                    const next = findEditableCell(group, rowIndex, fieldOrder[idx]);
+                    if (next) {
+                        next.focus();
+                        if (next.tagName === 'INPUT' && typeof next.select === 'function') {
+                            next.select();
+                        }
+                        return;
+                    }
+                }
+                insertRowBelow(group, rowIndex, true);
+                return;
+            }
+
+            const nextRowIndex = rowIndex + 1;
+            const next = findEditableCell(group, nextRowIndex, fieldOrder[0]);
+            if (next) {
+                next.focus();
+                return;
+            }
+            insertRowBelow(group, rowIndex, true);
+        }
+
+        function wireRowEvents(rowEl) {
+            rowEl.querySelectorAll('[data-field]').forEach((element) => {
+                element.addEventListener('input', onCellInput);
+                element.addEventListener('change', onCellInput);
+                element.addEventListener('keydown', onCellKeydown);
+                element.addEventListener('beforeinput', onCellBeforeInput);
+                element.addEventListener('paste', onCellPaste);
+                element.addEventListener('blur', onCellBlur);
+                element.addEventListener('focus', onCellFocus);
+            });
+
+            const insertBtn = rowEl.querySelector('[data-action="insert-row"]');
+            if (insertBtn) {
+                insertBtn.addEventListener('click', () => insertRowBelow(insertBtn.dataset.group, Number(insertBtn.dataset.rowIndex), true));
+            }
+
+            const deleteBtn = rowEl.querySelector('[data-action="delete-row"]');
+            if (deleteBtn) {
+                deleteBtn.addEventListener('click', () => removeRow(deleteBtn.dataset.group, Number(deleteBtn.dataset.rowIndex)));
+            }
+        }
+
+        function onCellInput(event) {
+            const target = event.target;
+            const group = target.dataset.group;
+            const rowIndex = Number(target.dataset.rowIndex);
+            const field = target.dataset.field;
+            const row = activeProject().data.groups[group][rowIndex];
+            if (field === 'capacity_kw') {
+                target.value = sanitizeDecimalInput(target.value);
+            }
+            row[field] = target.value;
+            markDirty();
+            if (field === 'capacity_kw' || field === 'voltage') {
+                scheduleRebalance();
+            } else {
+                scheduleAutoSave();
+            }
+        }
+
+        function onCellPaste(event) {
+            const target = event.target;
+            if (target.dataset.field !== 'capacity_kw') {
+                return;
+            }
+            event.preventDefault();
+            const pasted = event.clipboardData.getData('text');
+            target.value = sanitizeDecimalInput(pasted);
+            target.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        function onCellBeforeInput(event) {
+            const target = event.target;
+            if (target.dataset.field !== 'capacity_kw') {
+                return;
+            }
+            if (!event.data) {
+                return;
+            }
+            if (/^\d$/.test(event.data)) {
+                return;
+            }
+            if ((event.data === '.' || event.data === ',') && !target.value.includes('.')) {
+                return;
+            }
+            event.preventDefault();
+        }
+
+        function sanitizeDecimalInput(value) {
+            let cleaned = String(value ?? '').replace(/,/g, '.').replace(/[^\d.]/g, '');
+            const firstDot = cleaned.indexOf('.');
+            if (firstDot !== -1) {
+                cleaned = cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '');
+            }
+            return cleaned;
+        }
+
+        function onCellBlur(event) {
+            const target = event.target;
+            if (target.dataset.field !== 'capacity_kw') {
+                return;
+            }
+            const before = target.value;
+            const normalized = sanitizeDecimalInput(before).replace(/^\./, '0.');
+            const cleaned = normalized.endsWith('.') ? normalized.slice(0, -1) : normalized;
+            if (cleaned === before) {
+                return;
+            }
+            target.value = cleaned;
+            target.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        function onCellFocus(event) {
+            const target = event.target;
+            if (target.dataset.field && target.tagName === 'INPUT' && typeof target.select === 'function') {
+                target.select();
+            }
+        }
+
+        function onCellKeydown(event) {
+            if (event.target.dataset.field === 'capacity_kw') {
+                guardDecimalKeydown(event);
+            }
+            if (event.key !== 'Enter' && event.key !== 'Tab') {
+                return;
+            }
+            event.preventDefault();
+            const group = event.target.dataset.group;
+            const rowIndex = Number(event.target.dataset.rowIndex);
+            const field = event.target.dataset.field;
+            if (event.key === 'Enter') {
+                moveFocus(group, rowIndex, field, 'next-row');
+                return;
+            }
+            moveFocus(group, rowIndex, field, 'next-cell');
+        }
+
+        function guardDecimalKeydown(event) {
+            const allowedControlKeys = [
+                'Backspace',
+                'Delete',
+                'ArrowLeft',
+                'ArrowRight',
+                'ArrowUp',
+                'ArrowDown',
+                'Home',
+                'End',
+                'Escape',
+                'Tab',
+                'Enter'
+            ];
+            if (allowedControlKeys.includes(event.key) || event.ctrlKey || event.metaKey) {
+                return;
+            }
+            if (/^\d$/.test(event.key)) {
+                return;
+            }
+            if ((event.key === '.' || event.key === ',') && !event.target.value.includes('.')) {
+                return;
+            }
+            event.preventDefault();
+        }
+
+        function addRow(groupCode, focus = false) {
+            const project = activeProject();
+            project.data.groups[groupCode].push(createEmptyRow(groupCode));
+            renderDiagramGroups();
+            markDirty();
+            scheduleAutoSave();
+            if (focus) {
+                requestAnimationFrame(() => {
+                    focusFirstCell(groupCode, project.data.groups[groupCode].length - 1);
+                });
+            }
+        }
+
+        function insertRowBelow(groupCode, rowIndex, focus = false) {
+            const project = activeProject();
+            project.data.groups[groupCode].splice(rowIndex + 1, 0, createEmptyRow(groupCode));
+            renderDiagramGroups();
+            markDirty();
+            scheduleAutoSave();
+            if (focus) {
+                requestAnimationFrame(() => {
+                    focusFirstCell(groupCode, rowIndex + 1);
+                });
+            }
+        }
+
+        function removeRow(groupCode, rowIndex) {
+            const project = activeProject();
+            project.data.groups[groupCode].splice(rowIndex, 1);
+            renderDiagramGroups();
+            markDirty();
+            scheduleRebalance();
+        }
+
+        function markDirty() {
+            setSaveStatus('草稿待保存', 'pending');
+        }
+
+        function collectProjectPayload() {
+            const project = activeProject();
+            return {
+                name: projectNameEl.value.trim() || '未命名项目',
+                description: projectDescriptionEl.value.trim(),
+                data: project.data
+            };
+        }
+
+        async function refreshConfigsAndRerender(configs) {
+            state.configs = configs;
+            renderSettings();
+            renderDiagramGroups();
+            restoreFocusRequest();
+        }
+
+        async function addConfigItem(category, payload) {
+            const result = await apiFetch(`/api/configs/${category}`, {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+            await refreshConfigsAndRerender(result.configs);
+        }
+
+        async function updateConfigItem(id, payload) {
+            const result = await apiFetch(`/api/configs/${id}`, {
+                method: 'PUT',
+                body: JSON.stringify(payload)
+            });
+            await refreshConfigsAndRerender(result.configs);
+        }
+
+        async function deleteConfigItem(id) {
+            const result = await apiFetch(`/api/configs/${id}`, {
+                method: 'DELETE'
+            });
+            await refreshConfigsAndRerender(result.configs);
+        }
+
+        async function loadProject(projectId) {
+            const project = await apiFetch(`/api/projects/${projectId}`);
+            ensureProjectDataShape(project);
+            state.activeProject = project;
+            projectNameEl.value = project.name;
+            projectDescriptionEl.value = project.description || '';
+            renderProjects();
+            renderDiagramGroups();
+            setSaveStatus(`已加载项目：${project.name}`, 'success');
+        }
+
+        async function saveProject({ asNew = false, silent = false } = {}) {
+            const project = activeProject();
+            if (!project) {
+                return;
+            }
+            const payload = collectProjectPayload();
+            if (!silent) {
+                setSaveStatus(asNew ? '正在另存为新项目...' : '正在保存草稿...', 'pending');
+            }
+            const result = asNew
+                ? await apiFetch('/api/projects', { method: 'POST', body: JSON.stringify(payload) })
+                : await apiFetch(`/api/projects/${project.id}`, { method: 'PUT', body: JSON.stringify(payload) });
+            state.projects = result.projects;
+            state.activeProject = result.project;
+            projectNameEl.value = result.project.name;
+            projectDescriptionEl.value = result.project.description || '';
+            captureFocusRequest(document.activeElement, { selectAll: true });
+            renderProjects();
+            renderDiagramGroups();
+            restoreFocusRequest();
+            setSaveStatus(asNew ? '已保存为新项目' : '草稿已保存', 'success');
+        }
+
+        async function createProject() {
+            const baseName = `新项目 ${new Date().toLocaleDateString('zh-CN')}`;
+            state.activeProject = {
+                id: '',
+                name: baseName,
+                description: '',
+                data: {
+                    filters: { breaker_brand: '', wire_brand: '' },
+                    load_factors: { kx: 1, cos: 0.8 },
+                    groups: Object.fromEntries(Object.keys(GROUP_META).map((key) => [key, []])),
+                    summary: {
+                        phase_totals: { L1: 0, L2: 0, L3: 0 },
+                        phase_difference: 0,
+                        total_capacity_kw: 0,
+                        pjs_kw: 0,
+                        ijs_a: 0,
+                        row_count: 0
+                    }
+                }
+            };
+            projectNameEl.value = state.activeProject.name;
+            projectDescriptionEl.value = '';
+            renderProjects();
+            renderDiagramGroups();
+            await saveProject({ asNew: true });
+        }
+
+        async function duplicateProject() {
+            const project = activeProject();
+            if (!project?.id) {
+                return;
+            }
+            setSaveStatus('正在复制项目...', 'pending');
+            const result = await apiFetch(`/api/projects/${project.id}/duplicate`, { method: 'POST' });
+            state.projects = result.projects;
+            state.activeProject = result.project;
+            projectNameEl.value = result.project.name;
+            projectDescriptionEl.value = result.project.description || '';
+            renderProjects();
+            renderDiagramGroups();
+            setSaveStatus('已生成新副本项目', 'success');
+        }
+
+        async function deleteProject() {
+            const project = activeProject();
+            if (!project?.id) {
+                return;
+            }
+            const confirmed = window.confirm(`确定删除项目“${project.name}”吗？此操作不可撤销。`);
+            if (!confirmed) {
+                return;
+            }
+            setSaveStatus('正在删除项目...', 'pending');
+            const result = await apiFetch(`/api/projects/${project.id}`, { method: 'DELETE' });
+            state.projects = result.projects;
+            state.activeProject = result.active_project;
+            if (state.activeProject) {
+                ensureProjectDataShape(state.activeProject);
+                projectNameEl.value = state.activeProject.name;
+                projectDescriptionEl.value = state.activeProject.description || '';
+            } else {
+                projectNameEl.value = '';
+                projectDescriptionEl.value = '';
+            }
+            renderProjects();
+            renderDiagramGroups();
+            setSaveStatus('项目已删除', 'success');
+        }
+
+        async function rebalanceNow({ autoSave = true, silent = false } = {}) {
+            const project = activeProject();
+            if (!project) {
+                return;
+            }
+            if (!silent) {
+                setSaveStatus('正在计算相序...', 'pending');
+            }
+            const result = await apiFetch('/api/rebalance', {
+                method: 'POST',
+                body: JSON.stringify(project.data)
+            });
+            captureFocusRequest(document.activeElement, { selectAll: !silent });
+            project.data = result.data;
+            renderDiagramGroups();
+            restoreFocusRequest();
+            if (!silent) {
+                setSaveStatus('相序已更新', 'success');
+            }
+            if (autoSave) {
+                scheduleAutoSave();
+            }
+        }
+
+        function scheduleRebalance() {
+            clearTimeout(state.rebalanceTimer);
+            state.rebalanceTimer = setTimeout(() => {
+                rebalanceNow({ silent: true }).catch((error) => setSaveStatus(error.message, 'error'));
+            }, 400);
+        }
+
+        function scheduleAutoSave(delay = 10000) {
+            clearTimeout(state.autoSaveTimer);
+            state.autoSaveTimer = setTimeout(() => {
+                saveProject({ silent: true }).catch((error) => setSaveStatus(error.message, 'error'));
+            }, delay);
+        }
+
+        async function bootstrap() {
+            try {
+                const payload = await apiFetch('/api/bootstrap');
+                state.configs = payload.configs;
+                state.projects = payload.projects;
+                state.activeProject = payload.active_project;
+                ensureProjectDataShape(state.activeProject);
+                projectNameEl.value = state.activeProject.name;
+                projectDescriptionEl.value = state.activeProject.description || '';
+                renderProjects();
+                renderDiagramGroups();
+                renderSettings();
+                setSaveStatus('数据已就绪', 'success');
+            } catch (error) {
+                setSaveStatus(error.message, 'error');
+            }
+        }
+
+        breakerFilterEl.addEventListener('change', () => {
+            if (!activeProject()) {
+                return;
+            }
+            activeProject().data.filters.breaker_brand = breakerFilterEl.value;
+            renderDiagramGroups();
+            markDirty();
+            scheduleAutoSave();
+        });
+
+        wireFilterEl.addEventListener('change', () => {
+            if (!activeProject()) {
+                return;
+            }
+            activeProject().data.filters.wire_brand = wireFilterEl.value;
+            renderDiagramGroups();
+            markDirty();
+            scheduleAutoSave();
+        });
+
+        diagramKxEl.addEventListener('input', () => {
+            if (!activeProject()) {
+                return;
+            }
+            activeProject().data.load_factors.kx = diagramKxEl.value;
+            markDirty();
+            scheduleRebalance();
+        });
+
+        diagramCosEl.addEventListener('input', () => {
+            if (!activeProject()) {
+                return;
+            }
+            activeProject().data.load_factors.cos = diagramCosEl.value;
+            markDirty();
+            scheduleRebalance();
+        });
+
+        document.getElementById('save-project-btn').addEventListener('click', () => {
+            saveProject().catch((error) => setSaveStatus(error.message, 'error'));
+        });
+
+        document.getElementById('duplicate-project-btn').addEventListener('click', () => {
+            duplicateProject().catch((error) => setSaveStatus(error.message, 'error'));
+        });
+
+        document.getElementById('delete-project-btn').addEventListener('click', () => {
+            deleteProject().catch((error) => setSaveStatus(error.message, 'error'));
+        });
+
+        document.getElementById('rebalance-btn').addEventListener('click', () => {
+            rebalanceNow().catch((error) => setSaveStatus(error.message, 'error'));
+        });
+
+        document.getElementById('create-project-btn').addEventListener('click', () => {
+            createProject().catch((error) => setSaveStatus(error.message, 'error'));
+        });
+
+        projectNameEl.addEventListener('input', () => {
+            if (!activeProject()) {
+                return;
+            }
+            activeProject().name = projectNameEl.value;
+            markDirty();
+            scheduleAutoSave();
+            renderProjects();
+        });
+
+        projectDescriptionEl.addEventListener('input', () => {
+            if (!activeProject()) {
+                return;
+            }
+            activeProject().description = projectDescriptionEl.value;
+            markDirty();
+            scheduleAutoSave();
+        });
+
+        bootstrap();
+    </script>
 </body>
 </html>
-    

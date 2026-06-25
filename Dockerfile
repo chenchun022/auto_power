@@ -1,22 +1,23 @@
-FROM python:3.9-slim
+FROM python:3.11-slim
 
-# 设置工作目录
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
 WORKDIR /app
 
-# 复制依赖文件
-COPY requirements.txt .
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-# 安装依赖
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt ./
+RUN pip install --upgrade pip \
+    && pip install -r requirements.txt
 
-# 复制应用代码
 COPY . .
 
-# 创建静态文件目录
-RUN mkdir -p /app/static /app/templates
+RUN mkdir -p /app/config /app/static /app/templates
 
-# 暴露端口
 EXPOSE 8000
 
-# 启动命令
-CMD ["gunicorn", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "main:app", "--bind", "0.0.0.0:8000"]
+CMD ["gunicorn", "main:app", "-k", "uvicorn.workers.UvicornWorker", "-w", "2", "--threads", "4", "--bind", "0.0.0.0:8000", "--timeout", "120"]

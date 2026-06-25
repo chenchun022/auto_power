@@ -1,27 +1,92 @@
 # auto_power
-用于工装商业用电的有功功率以及电流的计算
 
-version: '3.8'
+一个基于 FastAPI 的电力负荷与电器系统图计算工具。
 
-services:
-  # 服务名：自定义（与你的应用相关，如 power-calculator-app）
-  power-calculator-app:
-    # 关键：拉取 Docker Hub 上的远程镜像（替换 <DOCKERHUB_USERNAME> 为你的 Docker Hub 用户名）
-    # 标签可选：latest（最新版）或具体版本（如 v1.0.1，更适合生产环境固定版本）
-    image: chenchun022/auto-power:latest
-    # 容器名称：固定名称，便于管理（如查看日志、停止容器）
-    container_name: power-calculator-app
-    # 端口映射：主机端口:容器端口（与你的应用一致：容器内 8000，主机用 9548，避免冲突）
-    ports:
-      - "9548:8000"
-    # 重启策略：生产级配置（容器挂掉自动重启，开机也自动启动）
-    restart: always
-    # 环境变量：必要配置（如时区，避免日志时间错乱）
-    environment:
-      - TZ=Asia/Shanghai  # 与你的 Dockerfile 时区配置保持一致
-    # 日志配置：限制日志大小，避免磁盘占满（复用你之前的配置逻辑）
-    logging:
-      driver: "json-file"  # 日志格式为 JSON，便于解析
-      options:
-        max-size: "10m"    # 单个日志文件最大 10MB
-        max-file: "3"      # 最多保留 3 个日志文件（超过自动删除旧日志）
+当前版本包含两类能力：
+
+- 负荷计算：输入 `Pe / Kx / cos`，计算 `Pjs / Ijs`
+- 电器系统图计算：
+  - 按 `N / P / S / WL` 分组录入回路
+  - 自动相序平衡
+  - 自动计算总容量、`Pjs`、`Ijs`
+  - 项目草稿自动保存
+  - SQLite 配置与项目库
+
+## 目录说明
+
+- `main.py`：FastAPI 应用入口
+- `templates/`：页面模板
+- `config/app.db`：SQLite 数据库
+- `Dockerfile`：容器构建文件
+- `docker-compose.yaml`：容器编排文件
+
+## 本地开发
+
+### 1. 创建并激活虚拟环境
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+```
+
+### 2. 安装依赖
+
+```powershell
+pip install -r requirements.txt
+```
+
+### 3. 启动项目
+
+```powershell
+python main.py
+```
+
+启动后访问：
+
+```text
+http://127.0.0.1:8000
+```
+
+## Docker 启动
+
+### 构建并启动
+
+```powershell
+docker compose up -d --build
+```
+
+启动后访问：
+
+```text
+http://127.0.0.1:9548
+```
+
+### 停止容器
+
+```powershell
+docker compose down
+```
+
+## 数据持久化
+
+项目数据和配置数据存放在：
+
+```text
+config/app.db
+```
+
+`docker-compose.yaml` 已将本地 `./config` 挂载到容器 `/app/config`，因此容器重建后数据仍会保留。
+
+## 主要技术栈
+
+- FastAPI
+- Jinja2
+- SQLite
+- Gunicorn + Uvicorn Worker
+- Tailwind CSS（CDN）
+
+## 说明
+
+- 应用已改为 `lifespan` 启动方式，不再使用已弃用的 `@app.on_event("startup")`
+- 默认监听端口为 `8000`
+- Docker 对外映射端口为 `9548`
