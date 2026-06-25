@@ -20,4 +20,4 @@ RUN mkdir -p /app/config /app/static /app/templates
 
 EXPOSE 8000
 
-CMD ["gunicorn", "main:app", "-k", "uvicorn.workers.UvicornWorker", "-w", "2", "--threads", "4", "--bind", "0.0.0.0:8000", "--timeout", "120"]
+CMD ["gunicorn", "main:app", "-k", "uvicorn.workers.UvicornWorker", "-w", "1", "--threads", "4", "--bind", "0.0.0.0:8000", "--timeout", "120"]

@@ -111,11 +111,13 @@ def now_iso() -> str:
 
 @contextmanager
 def get_db() -> Any:
-    connection = sqlite3.connect(DB_PATH)
+    connection = sqlite3.connect(DB_PATH, timeout=30, isolation_level=None)
     connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA journal_mode=WAL")
+    connection.execute("PRAGMA busy_timeout=30000")
+    connection.execute("PRAGMA foreign_keys=ON")
     try:
         yield connection
-        connection.commit()
     finally:
         connection.close()
 
@@ -548,11 +550,10 @@ def build_config_record(category: str, payload: dict[str, Any]) -> dict[str, Any
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request) -> HTMLResponse:
     context = {
-        "request": request,
         "app_title": APP_TITLE,
         "group_meta": GROUP_META,
     }
-    return templates.TemplateResponse("index.html", context)
+    return templates.TemplateResponse(request, "index.html", context)
 
 
 @app.post("/calculate", response_class=HTMLResponse)
@@ -565,7 +566,6 @@ async def calculate(
     pjs = calculate_pjs(pe, kx)
     ljs = calculate_ljs(pjs, cos)
     context = {
-        "request": request,
         "app_title": APP_TITLE,
         "group_meta": GROUP_META,
         "pe": pe,
@@ -574,7 +574,7 @@ async def calculate(
         "pjs": pjs,
         "ljs": ljs,
     }
-    return templates.TemplateResponse("index.html", context)
+    return templates.TemplateResponse(request, "index.html", context)
 
 
 @app.get("/api/bootstrap", response_class=JSONResponse)
