@@ -192,10 +192,15 @@
                                 <h2 class="text-base font-semibold">电器系统图计算</h2>
                                 <p class="text-sm text-gray-500">支持分组编辑、自动排序、自动保存与相序平衡</p>
                             </div>
-                            <button id="rebalance-btn" class="inline-flex items-center gap-2 rounded-lg border border-primary px-3 py-2 text-sm font-medium text-primary transition hover:bg-primary/5">
-                                <i class="fa fa-random"></i>
-                                <span>计算相序</span>
-                            </button>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <select id="template-select" class="input-base w-[200px]" title="选择模板应用到当前项目">
+                                    <option value="">选择模板...</option>
+                                </select>
+                                <button id="rebalance-btn" class="inline-flex items-center gap-2 rounded-lg border border-primary px-3 py-2 text-sm font-medium text-primary transition hover:bg-primary/5">
+                                    <i class="fa fa-random"></i>
+                                    <span>计算相序</span>
+                                </button>
+                            </div>
                         </div>
 
                         <div class="mt-4 grid gap-3 xl:grid-cols-8">
@@ -283,6 +288,50 @@
         </section>
     </template>
 
+    <!-- 项目右键菜单 -->
+    <div id="project-context-menu" class="fixed z-50 hidden w-44 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+        <button data-menu-action="set-template" class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100">
+            <i class="fa fa-file-text-o w-4 text-gray-400"></i>
+            <span data-role="template-label">设为模板</span>
+        </button>
+        <button data-menu-action="duplicate" class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100">
+            <i class="fa fa-files-o w-4 text-gray-400"></i>
+            <span>复制为副本</span>
+        </button>
+        <button data-menu-action="save" class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100">
+            <i class="fa fa-save w-4 text-gray-400"></i>
+            <span>保存</span>
+        </button>
+        <div class="my-1 border-t border-gray-100"></div>
+        <button data-menu-action="delete" class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50">
+            <i class="fa fa-trash w-4"></i>
+            <span>删除</span>
+        </button>
+    </div>
+
+    <!-- 删除二次确认弹窗（居中 + 红色警告） -->
+    <div id="confirm-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-4">
+        <div class="w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl">
+            <div class="flex items-start gap-3">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100">
+                    <i class="fa fa-exclamation-triangle text-lg text-red-600"></i>
+                </div>
+                <div class="min-w-0">
+                    <h3 class="text-base font-semibold text-gray-900">删除项目</h3>
+                    <p id="confirm-modal-message" class="mt-1 text-sm text-gray-600"></p>
+                    <p class="mt-2 text-xs font-medium text-red-600">
+                        <i class="fa fa-warning"></i>
+                        此操作不可撤销，项目数据将被永久删除！
+                    </p>
+                </div>
+            </div>
+            <div class="mt-5 flex justify-end gap-2">
+                <button id="confirm-modal-cancel" class="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-700 transition hover:bg-gray-100">取消</button>
+                <button id="confirm-modal-ok" class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700">确认删除</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const GROUP_META = {{ group_meta | tojson }};
         const CONFIG_FORMS = {
@@ -331,8 +380,58 @@
             'usage',
             'capacity_kw',
             'voltage',
-            'socket_type'
+            'socket_type',
+            'circuit_code'
         ];
+
+        // 解析回路编号，如 "N2" / "wl3" / "P 4" → { group: 'N', seq: 2 }；不合法返回 null
+        function parseCircuitCode(raw) {
+            const match = String(raw || '').trim().match(/^([A-Za-z]{1,2})\s*[-_]?\s*(\d{1,3})$/);
+            if (!match) {
+                return null;
+            }
+            const prefix = match[1].toUpperCase();
+            const group = Object.keys(GROUP_META).find((code) => code.toUpperCase() === prefix);
+            if (!group) {
+                return null;
+            }
+            const seq = Number(match[2]);
+            if (!Number.isInteger(seq) || seq < 1) {
+                return null;
+            }
+            return { group, seq };
+        }
+
+        // 手动修改回路编号后：整行移动到目标序号（支持跨组），其余行顺移、编号自动重排
+        function applyCircuitCodeMove(group, rowIndex, rawCode) {
+            const parsed = parseCircuitCode(rawCode);
+            const project = activeProject();
+            if (!parsed || !project) {
+                return { ok: false, message: '编号格式不正确，示例：N2 / WL3' };
+            }
+            const rows = project.data.groups[group];
+            if (!Array.isArray(rows) || rowIndex >= rows.length) {
+                return { ok: false, message: '行不存在' };
+            }
+            // 编号没有变化时不动作
+            const currentCode = rows[rowIndex].circuit_code;
+            if (String(rows[rowIndex].sequence) === String(parsed.seq) && parsed.group === group) {
+                return { ok: true, changed: false };
+            }
+            if (parsed.group === group) {
+                const [moved] = rows.splice(rowIndex, 1);
+                const target = Math.min(parsed.seq - 1, rows.length);
+                rows.splice(target, 0, moved);
+            } else {
+                // 跨组移动：从源组移除，插入目标组
+                const [moved] = rows.splice(rowIndex, 1);
+                moved.group_type = parsed.group;
+                const targetRows = project.data.groups[parsed.group];
+                const target = Math.min(parsed.seq - 1, targetRows.length);
+                targetRows.splice(target, 0, moved);
+            }
+            return { ok: true, changed: true };
+        }
 
         const viewButtons = Array.from(document.querySelectorAll('[data-view-btn]'));
         const views = Array.from(document.querySelectorAll('[data-view]'));
@@ -406,6 +505,13 @@
                 .replaceAll('>', '&gt;')
                 .replaceAll('"', '&quot;')
                 .replaceAll("'", '&#039;');
+        }
+
+        const PHASE_COLORS = { L1: 'text-emerald-600', L2: 'text-amber-500', L3: 'text-red-600' };
+
+        function phaseSpanHtml(value) {
+            const colored = escapeHtml(value).replace(/L[123]/g, (token) => `<span class="font-semibold ${PHASE_COLORS[token]}">${token}</span>`);
+            return colored || '<span class="text-gray-300">-</span>';
         }
 
         function getCategory(key) {
@@ -499,20 +605,247 @@
         }
 
         function renderProjects() {
+            closeProjectContextMenu();
             projectListEl.innerHTML = '';
             const template = document.getElementById('project-item-template');
             state.projects.forEach((project) => {
                 const fragment = template.content.cloneNode(true);
                 const button = fragment.querySelector('button');
-                fragment.querySelector('[data-role="name"]').textContent = project.name;
+                fragment.querySelector('[data-role="name"]').textContent = project.is_template ? `⭐ ${project.name}` : project.name;
                 fragment.querySelector('[data-role="time"]').textContent = `更新于 ${project.updated_at}`;
                 if (state.activeProject && state.activeProject.id === project.id) {
                     button.classList.add('border-primary', 'bg-primary/5');
                 }
                 button.addEventListener('click', () => loadProject(project.id));
+                // 右键菜单：设为模板 / 复制副本 / 保存 / 删除
+                button.addEventListener('contextmenu', (event) => {
+                    event.preventDefault();
+                    openProjectContextMenu(event, project);
+                });
                 projectListEl.appendChild(fragment);
             });
+            refreshTemplateSelect();
         }
+
+        // ===== 项目右键菜单 =====
+        const contextMenuEl = document.getElementById('project-context-menu');
+        let contextMenuProject = null;
+
+        function openProjectContextMenu(event, project) {
+            contextMenuProject = project;
+            contextMenuEl.querySelector('[data-role="template-label"]').textContent = project.is_template ? '取消模板' : '设为模板';
+            contextMenuEl.classList.remove('hidden');
+            const menuWidth = contextMenuEl.offsetWidth;
+            const menuHeight = contextMenuEl.offsetHeight;
+            const x = Math.min(event.clientX, window.innerWidth - menuWidth - 8);
+            const y = Math.min(event.clientY, window.innerHeight - menuHeight - 8);
+            contextMenuEl.style.left = `${x}px`;
+            contextMenuEl.style.top = `${y}px`;
+        }
+
+        function closeProjectContextMenu() {
+            contextMenuEl.classList.add('hidden');
+            contextMenuProject = null;
+        }
+
+        document.addEventListener('click', (event) => {
+            if (!contextMenuEl.contains(event.target)) {
+                closeProjectContextMenu();
+            }
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                closeProjectContextMenu();
+            }
+        });
+        window.addEventListener('blur', closeProjectContextMenu);
+
+        contextMenuEl.addEventListener('click', async (event) => {
+            const actionEl = event.target.closest('[data-menu-action]');
+            if (!actionEl || !contextMenuProject) {
+                return;
+            }
+            const action = actionEl.dataset.menuAction;
+            // L3修复: 按 id 从最新列表重查，避免 state.projects 被异步替换后用过期引用操作
+            const targetProject = state.projects.find((item) => item.id === contextMenuProject.id) || contextMenuProject;
+            closeProjectContextMenu();
+            if (action === 'set-template') {
+                await toggleTemplate(targetProject);
+            } else if (action === 'duplicate') {
+                // 若目标不是当前项目，先取库内最新数据再复制
+                const source = targetProject.id === activeProject()?.id ? activeProject() : await apiFetch(`/api/projects/${targetProject.id}`);
+                await duplicateProjectWith(source);
+            } else if (action === 'save') {
+                if (targetProject.id === activeProject()?.id) {
+                    await saveProject();
+                } else {
+                    setSaveStatus('仅支持保存当前加载的项目', 'error');
+                }
+            } else if (action === 'delete') {
+                await deleteProjectWithConfirm(targetProject);
+            }
+        });
+
+        async function toggleTemplate(project) {
+            setSaveStatus('正在更新模板标记...', 'pending');
+            try {
+                const result = await apiFetch(`/api/projects/${project.id}/set-template`, {
+                    method: 'POST',
+                    body: JSON.stringify({ is_template: !project.is_template })
+                });
+                state.projects = result.projects;
+                if (activeProject()?.id === project.id) {
+                    activeProject().is_template = result.is_template;
+                }
+                renderProjects();
+                setSaveStatus(result.is_template ? `已将“${project.name}”设为模板` : `已取消“${project.name}”的模板`, 'success');
+            } catch (error) {
+                setSaveStatus(error.message, 'error');
+            }
+        }
+
+        async function duplicateProjectWith(project) {
+            setSaveStatus('正在复制项目...', 'pending');
+            try {
+                const result = await apiFetch(`/api/projects/${project.id}/duplicate`, { method: 'POST' });
+                state.projects = result.projects;
+                state.activeProject = result.project;
+                projectNameEl.value = result.project.name;
+                projectDescriptionEl.value = result.project.description || '';
+                renderProjects();
+                renderDiagramGroups();
+                setSaveStatus('已生成新副本项目', 'success');
+            } catch (error) {
+                setSaveStatus(error.message, 'error');
+            }
+        }
+
+        async function deleteProjectWithConfirm(project) {
+            const confirmed = await showConfirmModal(`确定删除项目“${project.name}”吗？`, { danger: true });
+            if (!confirmed) {
+                return;
+            }
+            setSaveStatus('正在删除项目...', 'pending');
+            try {
+                const result = await apiFetch(`/api/projects/${project.id}`, { method: 'DELETE' });
+                state.projects = result.projects;
+                // M4修复: 仅当删除的是当前活动项目时才切换，避免误丢弃正在编辑的项目
+                if (activeProject()?.id === project.id) {
+                    state.activeProject = result.active_project;
+                    if (state.activeProject) {
+                        ensureProjectDataShape(state.activeProject);
+                        projectNameEl.value = state.activeProject.name;
+                        projectDescriptionEl.value = state.activeProject.description || '';
+                    } else {
+                        projectNameEl.value = '';
+                        projectDescriptionEl.value = '';
+                    }
+                    renderDiagramGroups();
+                }
+                renderProjects();
+                setSaveStatus('项目已删除', 'success');
+            } catch (error) {
+                setSaveStatus(error.message, 'error');
+            }
+        }
+
+        // ===== 居中确认弹窗 =====
+        const confirmModalEl = document.getElementById('confirm-modal');
+        let confirmResolve = null;
+
+        function showConfirmModal(message, options = {}) {
+            document.getElementById('confirm-modal-message').textContent = message;
+            const warnEl = document.querySelector('#confirm-modal .text-red-600.text-xs');
+            const okBtn = document.getElementById('confirm-modal-ok');
+            if (options.danger) {
+                warnEl.classList.remove('hidden');
+                okBtn.textContent = options.okText || '确认删除';
+            } else {
+                warnEl.classList.add('hidden');
+                okBtn.textContent = options.okText || '确认';
+            }
+            confirmModalEl.classList.remove('hidden');
+            confirmModalEl.classList.add('flex');
+            return new Promise((resolve) => {
+                confirmResolve = resolve;
+            });
+        }
+
+        function closeConfirmModal(confirmed) {
+            confirmModalEl.classList.add('hidden');
+            confirmModalEl.classList.remove('flex');
+            if (confirmResolve) {
+                confirmResolve(confirmed);
+                confirmResolve = null;
+            }
+        }
+
+        document.getElementById('confirm-modal-cancel').addEventListener('click', () => closeConfirmModal(false));
+        document.getElementById('confirm-modal-ok').addEventListener('click', () => closeConfirmModal(true));
+        confirmModalEl.addEventListener('click', (event) => {
+            if (event.target === confirmModalEl) {
+                closeConfirmModal(false);
+            }
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && !confirmModalEl.classList.contains('hidden')) {
+                closeConfirmModal(false);
+            }
+        });
+
+        // ===== 模板下拉框 =====
+        const templateSelectEl = document.getElementById('template-select');
+
+        function refreshTemplateSelect() {
+            if (!templateSelectEl) {
+                return;
+            }
+            const templates = state.projects.filter((project) => project.is_template);
+            const previous = templateSelectEl.value;
+            templateSelectEl.innerHTML = `<option value="">选择模板...</option>${templates.map((project) => `<option value="${escapeHtml(project.id)}">${escapeHtml(project.name)}</option>`).join('')}`;
+            templateSelectEl.value = previous;
+        }
+
+        // 判断项目是否有实质内容：任一分组存在回路行即视为有内容
+        function projectHasContent(project) {
+            if (!project?.data?.groups) {
+                return false;
+            }
+            return Object.values(project.data.groups).some((rows) => Array.isArray(rows) && rows.length > 0);
+        }
+
+        templateSelectEl.addEventListener('change', async () => {
+            const templateId = templateSelectEl.value;
+            if (!templateId) {
+                return;
+            }
+            const project = activeProject();
+            if (!project) {
+                templateSelectEl.value = '';
+                return;
+            }
+            // 空项目直接应用；有内容时必须经用户确认，防止误覆盖
+            if (projectHasContent(project)) {
+                const using = await showConfirmModal('当前项目已有回路内容，应用模板将覆盖全部内容且无法撤销，是否继续？', { danger: true, okText: '覆盖应用' });
+                if (!using) {
+                    templateSelectEl.value = '';
+                    return;
+                }
+            }
+            try {
+                const template = await apiFetch(`/api/projects/${templateId}`);
+                // 深拷贝模板数据，替换分组/系数/筛选，保留当前项目名称与备注
+                project.data = JSON.parse(JSON.stringify(template.data));
+                ensureProjectDataShape(project);
+                renderDiagramGroups();
+                markDirty();
+                scheduleAutoSave();
+                setSaveStatus(`已应用模板：${template.name}`, 'success');
+            } catch (error) {
+                setSaveStatus(error.message, 'error');
+            }
+            templateSelectEl.value = '';
+        });
 
         function renderSummary() {
             const summary = activeProject()?.data?.summary || { phase_totals: { L1: 0, L2: 0, L3: 0 }, phase_difference: 0, total_capacity_kw: 0, pjs_kw: 0, ijs_a: 0, row_count: 0 };
@@ -520,11 +853,22 @@
             document.getElementById('summary-total').textContent = `${summary.total_capacity_kw || 0} kW`;
             document.getElementById('summary-pjs').textContent = `${summary.pjs_kw || 0} kW`;
             document.getElementById('summary-ijs').textContent = `${summary.ijs_a || 0} A`;
-            document.getElementById('summary-phases').textContent = `${summary.phase_totals?.L1 || 0} / ${summary.phase_totals?.L2 || 0} / ${summary.phase_totals?.L3 || 0}`;
+            document.getElementById('summary-phases').innerHTML = [
+                `<span class="font-semibold ${PHASE_COLORS.L1}">${summary.phase_totals?.L1 || 0}</span>`,
+                '<span class="text-gray-400">/</span>',
+                `<span class="font-semibold ${PHASE_COLORS.L2}">${summary.phase_totals?.L2 || 0}</span>`,
+                '<span class="text-gray-400">/</span>',
+                `<span class="font-semibold ${PHASE_COLORS.L3}">${summary.phase_totals?.L3 || 0}</span>`
+            ].join(' ');
             document.getElementById('summary-diff').textContent = summary.phase_difference || 0;
             document.getElementById('summary-count').textContent = summary.row_count || 0;
-            diagramKxEl.value = loadFactors.kx ?? 1;
-            diagramCosEl.value = loadFactors.cos ?? 0.8;
+            // Kx/cos 正在输入时不回写，避免重算结果打断键入（如输入 "0." 被规范成 "0"）
+            if (document.activeElement !== diagramKxEl) {
+                diagramKxEl.value = loadFactors.kx ?? 1;
+            }
+            if (document.activeElement !== diagramCosEl) {
+                diagramCosEl.value = loadFactors.cos ?? 0.8;
+            }
         }
 
         function renderFilterOptions() {
@@ -715,8 +1059,8 @@
                 <td class="px-2 py-2 text-gray-500">${row.sequence}</td>
                 <td class="px-2 py-2"><div class="min-w-[320px]">${createSelect(breakerOptions, row.breaker_option, attrString(groupCode, rowIndex, 'breaker_option'))}</div></td>
                 <td class="px-2 py-2"><div class="min-w-[300px]">${createSelect(wireOptions, row.wire_option, attrString(groupCode, rowIndex, 'wire_option'))}</div></td>
-                <td class="px-2 py-2"><input class="input-base w-[88px] bg-gray-50 px-2" value="${escapeHtml(row.phase_sequence || '')}" readonly></td>
-                <td class="px-2 py-2"><input class="input-base w-[76px] bg-gray-50 px-2" value="${escapeHtml(row.circuit_code || '')}" readonly></td>
+                <td class="px-2 py-2"><div class="input-base flex w-[88px] items-center bg-gray-50 px-2" data-role="phase-display">${phaseSpanHtml(row.phase_sequence)}</div></td>
+                <td class="px-2 py-2"><input class="input-base w-[76px] px-2" value="${escapeHtml(row.circuit_code || '')}" data-group="${groupCode}" data-row-index="${rowIndex}" data-field="circuit_code" title="输入如 N2 并回车，整行移动到该序号"></td>
                 <td class="px-2 py-2"><input class="input-base min-w-[180px]" value="${escapeHtml(row.usage || '')}" data-group="${groupCode}" data-row-index="${rowIndex}" data-field="usage"></td>
                 <td class="px-2 py-2">
                     <div class="flex min-w-[180px] gap-2">
@@ -808,6 +1152,10 @@
 
         function findEditableCell(group, rowIndex, field) {
             return document.querySelector(`[data-group="${group}"][data-row-index="${rowIndex}"][data-field="${field}"]`);
+        }
+
+        function findRowElement(group, rowIndex) {
+            return document.querySelector(`[data-group="${group}"][data-row-index="${rowIndex}"]`)?.closest('tr');
         }
 
         function captureFocusRequest(element, options = {}) {
@@ -917,6 +1265,11 @@
             if (field === 'capacity_kw') {
                 target.value = sanitizeDecimalInput(target.value);
             }
+            if (field === 'circuit_code') {
+                // 编号只在提交（回车/失焦）时应用移动，键入过程不触发保存与重排
+                markDirty();
+                return;
+            }
             row[field] = target.value;
             markDirty();
             if (field === 'capacity_kw' || field === 'voltage') {
@@ -924,6 +1277,28 @@
             } else {
                 scheduleAutoSave();
             }
+        }
+
+        function commitCircuitCode(target) {
+            const group = target.dataset.group;
+            const rowIndex = Number(target.dataset.rowIndex);
+            const result = applyCircuitCodeMove(group, rowIndex, target.value);
+            if (!result.ok) {
+                setSaveStatus(result.message, 'error');
+                // 还原为当前合法编号
+                const row = activeProject().data.groups[group][rowIndex];
+                target.value = row?.circuit_code || '';
+                return;
+            }
+            if (!result.changed) {
+                return;
+            }
+            markDirty();
+            renderDiagramGroups();
+            // 编号移动需要整表重渲染以显示新编号；用非静默重算同步刷新
+            rebalanceNow({ silent: false, autoSave: true }).catch((error) => setSaveStatus(error.message, 'error'));
+            scheduleAutoSave();
+            setSaveStatus('回路已按新编号重排', 'success');
         }
 
         function onCellPaste(event) {
@@ -965,6 +1340,16 @@
 
         function onCellBlur(event) {
             const target = event.target;
+            if (target.dataset.field === 'circuit_code') {
+                // 仅当值与当前行编号不一致时尝试提交移动
+                const group = target.dataset.group;
+                const rowIndex = Number(target.dataset.rowIndex);
+                const row = activeProject()?.data?.groups?.[group]?.[rowIndex];
+                if (row && target.value !== String(row.circuit_code || '')) {
+                    commitCircuitCode(target);
+                }
+                return;
+            }
             if (target.dataset.field !== 'capacity_kw') {
                 return;
             }
@@ -989,6 +1374,12 @@
             if (event.target.dataset.field === 'capacity_kw') {
                 guardDecimalKeydown(event);
             }
+            // 回路编号：回车提交移动；方向键导航在编号框中仍生效（上下跨行）
+            if (event.target.dataset.field === 'circuit_code' && event.key === 'Enter') {
+                event.preventDefault();
+                commitCircuitCode(event.target);
+                return;
+            }
             if (event.key !== 'Enter' && event.key !== 'Tab') {
                 return;
             }
@@ -1001,6 +1392,136 @@
                 return;
             }
             moveFocus(group, rowIndex, field, 'next-cell');
+        }
+
+        function focusInputAndSelect(el) {
+            if (!el) {
+                return;
+            }
+            el.focus();
+            if (el.tagName === 'INPUT' && typeof el.select === 'function') {
+                el.select();
+            }
+        }
+
+        function hasTextSelection(el) {
+            try {
+                return typeof el.selectionStart === 'number' && el.selectionStart !== el.selectionEnd;
+            } catch (error) {
+                return false;
+            }
+        }
+
+        // 选中态（点击进入，未开始编辑）：整段选中或内容为空时，左右键执行单元格切换
+        function isNavMode(el) {
+            return hasTextSelection(el) || el.value === '';
+        }
+
+        function visibleFocusablesInActiveView() {
+            const view = views.find((section) => !section.classList.contains('hidden'));
+            if (!view) {
+                return [];
+            }
+            return Array.from(view.querySelectorAll('input, select'))
+                .filter((el) => !el.disabled && !el.readOnly && el.offsetParent !== null);
+        }
+
+        function handleArrowNavigation(event) {
+            const target = event.target;
+            const isSelect = target.tagName === 'SELECT';
+            if (target.tagName !== 'INPUT' && !isSelect) {
+                return; // textarea 方向键用于编辑，不拦截
+            }
+            const key = event.key;
+            if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key)) {
+                return;
+            }
+
+            // select：↑↓ 交给原生行为选择选项，←→ 一律拦截（防止原生行为改选选项），跳转到前/后一个可编辑控件
+            if (isSelect) {
+                if (key === 'ArrowUp' || key === 'ArrowDown') {
+                    return;
+                }
+                event.preventDefault();
+                const group = target.dataset.group;
+                if (group) {
+                    // 表格内 select：左右在同行可编辑单元格间切换
+                    const rowIndex = Number(target.dataset.rowIndex);
+                    const fields = ['breaker_option', 'wire_option', 'usage', 'capacity_kw', 'voltage', 'socket_type'];
+                    const idx = fields.indexOf(target.dataset.field);
+                    const dir = key === 'ArrowLeft' ? -1 : 1;
+                    for (let i = idx + dir; i >= 0 && i < fields.length; i += dir) {
+                        const next = document.querySelector(`[data-group="${group}"][data-row-index="${rowIndex}"][data-field="${fields[i]}"]`);
+                        if (next) {
+                            next.focus();
+                            return;
+                        }
+                    }
+                    return;
+                }
+                // 普通下拉：跳到页面内下一个/上一个可编辑控件
+                const focusables = visibleFocusablesInActiveView();
+                const idx = focusables.indexOf(target);
+                if (idx === -1) {
+                    return;
+                }
+                const nextIdx = idx + (key === 'ArrowRight' ? 1 : -1);
+                if (nextIdx < 0 || nextIdx >= focusables.length) {
+                    return;
+                }
+                focusables[nextIdx].focus();
+                return;
+            }
+
+            // 表格单元格：上下跨行同列移动，左右在选中态切换单元格
+            if (target.dataset.group && target.dataset.field) {
+                const group = target.dataset.group;
+                const rowIndex = Number(target.dataset.rowIndex);
+                const fieldIdx = fieldOrder.indexOf(target.dataset.field);
+                let next = null;
+                if (key === 'ArrowUp') {
+                    next = rowIndex > 0 ? findEditableCell(group, rowIndex - 1, target.dataset.field) : null;
+                } else if (key === 'ArrowDown') {
+                    next = findEditableCell(group, rowIndex + 1, target.dataset.field);
+                } else {
+                    if (!isNavMode(target)) {
+                        return; // 编辑态（光标已落入文本）时让方向键正常移动光标
+                    }
+                    const dir = key === 'ArrowLeft' ? -1 : 1;
+                    for (let idx = fieldIdx + dir; idx >= 0 && idx < fieldOrder.length; idx += dir) {
+                        const candidate = findEditableCell(group, rowIndex, fieldOrder[idx]);
+                        if (candidate) {
+                            next = candidate;
+                            break;
+                        }
+                    }
+                }
+                if (next) {
+                    event.preventDefault();
+                    focusInputAndSelect(next);
+                }
+                return;
+            }
+
+            // 普通输入框：按页面内 DOM 顺序切换（含 select）；左右仅选中态生效
+            const inputs = visibleFocusablesInActiveView();
+            const idx = inputs.indexOf(target);
+            if (idx === -1) {
+                return;
+            }
+            let nextIdx = null;
+            if (key === 'ArrowDown') {
+                nextIdx = idx + 1;
+            } else if (key === 'ArrowUp') {
+                nextIdx = idx - 1;
+            } else if (isNavMode(target)) {
+                nextIdx = key === 'ArrowRight' ? idx + 1 : idx - 1;
+            }
+            if (nextIdx === null || nextIdx < 0 || nextIdx >= inputs.length) {
+                return;
+            }
+            event.preventDefault();
+            focusInputAndSelect(inputs[nextIdx]);
         }
 
         function guardDecimalKeydown(event) {
@@ -1106,7 +1627,26 @@
             await refreshConfigsAndRerender(result.configs);
         }
 
+        // M3修复: 切换/加载新项目前，把旧项目待存的编辑立即落盘，避免 10s 自动保存窗口内切走导致丢失
+        async function flushPendingSave() {
+            const project = activeProject();
+            if (!project?.id || !state.autoSaveTimer) {
+                return;
+            }
+            clearTimeout(state.autoSaveTimer);
+            state.autoSaveTimer = null;
+            try {
+                await saveProject({ silent: true });
+            } catch (error) {
+                setSaveStatus(`旧项目保存失败：${error.message}`, 'error');
+            }
+        }
+
         async function loadProject(projectId) {
+            const current = activeProject();
+            if (current?.id && current.id !== projectId) {
+                await flushPendingSave();
+            }
             const project = await apiFetch(`/api/projects/${projectId}`);
             ensureProjectDataShape(project);
             state.activeProject = project;
@@ -1130,13 +1670,16 @@
                 ? await apiFetch('/api/projects', { method: 'POST', body: JSON.stringify(payload) })
                 : await apiFetch(`/api/projects/${project.id}`, { method: 'PUT', body: JSON.stringify(payload) });
             state.projects = result.projects;
-            state.activeProject = result.project;
-            projectNameEl.value = result.project.name;
-            projectDescriptionEl.value = result.project.description || '';
-            captureFocusRequest(document.activeElement, { selectAll: true });
-            renderProjects();
-            renderDiagramGroups();
-            restoreFocusRequest();
+            // 静默保存：不重绘、不替换本地数据对象（保留请求期间的新键入），仅刷新项目列表
+            if (!silent) {
+                state.activeProject = result.project;
+                projectNameEl.value = result.project.name;
+                projectDescriptionEl.value = result.project.description || '';
+                renderProjects();
+                renderDiagramGroups();
+            } else {
+                renderProjects();
+            }
             setSaveStatus(asNew ? '已保存为新项目' : '草稿已保存', 'success');
         }
 
@@ -1172,41 +1715,22 @@
             if (!project?.id) {
                 return;
             }
-            setSaveStatus('正在复制项目...', 'pending');
-            const result = await apiFetch(`/api/projects/${project.id}/duplicate`, { method: 'POST' });
-            state.projects = result.projects;
-            state.activeProject = result.project;
-            projectNameEl.value = result.project.name;
-            projectDescriptionEl.value = result.project.description || '';
-            renderProjects();
-            renderDiagramGroups();
-            setSaveStatus('已生成新副本项目', 'success');
+            await duplicateProjectWith(project);
         }
 
-        async function deleteProject() {
-            const project = activeProject();
-            if (!project?.id) {
-                return;
-            }
-            const confirmed = window.confirm(`确定删除项目“${project.name}”吗？此操作不可撤销。`);
-            if (!confirmed) {
-                return;
-            }
-            setSaveStatus('正在删除项目...', 'pending');
-            const result = await apiFetch(`/api/projects/${project.id}`, { method: 'DELETE' });
-            state.projects = result.projects;
-            state.activeProject = result.active_project;
-            if (state.activeProject) {
-                ensureProjectDataShape(state.activeProject);
-                projectNameEl.value = state.activeProject.name;
-                projectDescriptionEl.value = state.activeProject.description || '';
-            } else {
-                projectNameEl.value = '';
-                projectDescriptionEl.value = '';
-            }
-            renderProjects();
-            renderDiagramGroups();
-            setSaveStatus('项目已删除', 'success');
+        // M5修复: 重算响应只合并派生字段（summary/phase_sequence），不整体替换 data，
+        // 请求飞行期间用户在表格里的新键入不会被旧快照覆盖
+        function mergeRebalanceResult(project, resultData) {
+            project.data.summary = resultData.summary;
+            Object.keys(GROUP_META).forEach((groupCode) => {
+                const localRows = project.data.groups[groupCode] || [];
+                const serverRows = resultData.groups[groupCode] || [];
+                serverRows.forEach((serverRow, index) => {
+                    if (localRows[index]) {
+                        localRows[index].phase_sequence = serverRow.phase_sequence;
+                    }
+                });
+            });
         }
 
         async function rebalanceNow({ autoSave = true, silent = false } = {}) {
@@ -1221,16 +1745,34 @@
                 method: 'POST',
                 body: JSON.stringify(project.data)
             });
-            captureFocusRequest(document.activeElement, { selectAll: !silent });
-            project.data = result.data;
-            renderDiagramGroups();
-            restoreFocusRequest();
+            mergeRebalanceResult(project, result.data);
+            // 静默重算（输入触发）时只做定点刷新，不重绘表格，避免打断正在输入的焦点
+            if (silent) {
+                refreshSummaryOnly();
+            } else {
+                renderDiagramGroups();
+            }
             if (!silent) {
                 setSaveStatus('相序已更新', 'success');
             }
             if (autoSave) {
                 scheduleAutoSave();
             }
+        }
+
+        function refreshSummaryOnly() {
+            renderSummary();
+            document.querySelectorAll('[data-role="phase-display"]').forEach((el) => {
+                const host = el.closest('tr');
+                const anchor = host?.querySelector('[data-group]');
+                if (!anchor) {
+                    return;
+                }
+                const group = anchor.dataset.group;
+                const rowIndex = Number(anchor.dataset.rowIndex);
+                const row = activeProject().data.groups[group]?.[rowIndex];
+                el.innerHTML = phaseSpanHtml(row?.phase_sequence || '');
+            });
         }
 
         function scheduleRebalance() {
@@ -1312,7 +1854,11 @@
         });
 
         document.getElementById('delete-project-btn').addEventListener('click', () => {
-            deleteProject().catch((error) => setSaveStatus(error.message, 'error'));
+            const project = activeProject();
+            if (!project?.id) {
+                return;
+            }
+            deleteProjectWithConfirm(project).catch((error) => setSaveStatus(error.message, 'error'));
         });
 
         document.getElementById('rebalance-btn').addEventListener('click', () => {
@@ -1341,6 +1887,8 @@
             markDirty();
             scheduleAutoSave();
         });
+
+        document.addEventListener('keydown', handleArrowNavigation);
 
         bootstrap();
     </script>

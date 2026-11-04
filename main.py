@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import sqlite3
 import uuid
@@ -91,8 +92,8 @@ os.makedirs("static", exist_ok=True)
 os.makedirs("templates", exist_ok=True)
 os.makedirs(CONFIG_DIR, exist_ok=True)
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
+app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 
 def calculate_pjs(pe: float, kx: float) -> float:
@@ -118,6 +119,8 @@ def get_db() -> Any:
     connection.execute("PRAGMA foreign_keys=ON")
     try:
         yield connection
+        if connection.in_transaction:
+            connection.commit()
     finally:
         connection.close()
 
@@ -205,11 +208,13 @@ def init_db() -> None:
                 name TEXT NOT NULL,
                 description TEXT NOT NULL DEFAULT '',
                 data_json TEXT NOT NULL,
+                is_template INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
             """
         )
+        ensure_column(conn, "projects", "is_template", "INTEGER NOT NULL DEFAULT 0")
 
         for category, meta in CONFIG_CATEGORIES.items():
             existing_values = {
@@ -300,12 +305,24 @@ def default_project_payload(name: str = "新项目") -> dict[str, Any]:
     }
 
 
+def dump_project_data(data: dict[str, Any]) -> str:
+    # allow_nan=False：历史毒化数据（Infinity/NaN）在此被拒绝而不是继续扩散
+    return json.dumps(data, ensure_ascii=False, allow_nan=False)
+
+
 def serialize_project_row(row: sqlite3.Row) -> dict[str, Any]:
-    data = json.loads(row["data_json"])
+    try:
+        data = json.loads(row["data_json"])
+        if not isinstance(data, dict):
+            raise ValueError("data_json 不是对象")
+    except (ValueError, TypeError) as error:
+        print(f"[warn] 项目 {row['id']} 数据损坏，回退默认数据: {error}")
+        data = default_project_payload()["data"]
     return {
         "id": row["id"],
         "name": row["name"],
         "description": row["description"],
+        "is_template": bool(row["is_template"]) if "is_template" in row.keys() else False,
         "data": normalize_project_data(data),
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
@@ -324,20 +341,27 @@ def get_project_or_404(project_id: str) -> dict[str, Any]:
 
 
 def normalize_row(row: dict[str, Any], group_code: str, index: int) -> dict[str, Any]:
+    # 容错：非 dict 行（如恶意传入 [1,2]）回退为空行，避免 AttributeError 500
+    if not isinstance(row, dict):
+        row = {}
     capacity_value = row.get("capacity_kw", "")
     voltage = str(row.get("voltage", "220"))
+    # 字符串字段限长，防止超大 payload 落库
+    def clip(value: Any, limit: int = 300) -> str:
+        return str(value or "")[:limit]
+
     return {
-        "id": row.get("id") or uuid.uuid4().hex,
+        "id": str(row.get("id") or uuid.uuid4().hex)[:64],
         "group_type": group_code,
         "sequence": index + 1,
         "circuit_code": f"{group_code}{index + 1}",
-        "breaker_option": str(row.get("breaker_option", "")),
-        "wire_option": str(row.get("wire_option", "")),
-        "phase_sequence": str(row.get("phase_sequence", "")),
-        "usage": str(row.get("usage", "")),
+        "breaker_option": clip(row.get("breaker_option", "")),
+        "wire_option": clip(row.get("wire_option", "")),
+        "phase_sequence": clip(row.get("phase_sequence", ""), 16),
+        "usage": clip(row.get("usage", "")),
         "capacity_kw": normalize_number(capacity_value, default=""),
         "voltage": "380" if voltage == "380" else "220",
-        "socket_type": str(row.get("socket_type", "")),
+        "socket_type": clip(row.get("socket_type", "")),
     }
 
 
@@ -348,29 +372,46 @@ def normalize_number(value: Any, default: Any = 0, keep_int: bool = False) -> An
         number = float(value)
     except (TypeError, ValueError):
         return default
+    if not math.isfinite(number):
+        # 拒绝 NaN/Infinity：否则会毒化 JSON 序列化，导致项目读取接口 500
+        return default
     if keep_int and number.is_integer():
         return int(number)
     return round(number, 4)
 
 
+def as_dict(value: Any) -> dict[str, Any]:
+    """宽容取值：非 dict 一律回退空 dict，避免畸形输入触发 AttributeError"""
+    return value if isinstance(value, dict) else {}
+
+
+def as_list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
 def normalize_project_data(data: dict[str, Any] | None) -> dict[str, Any]:
+    safe_data = as_dict(data)
+    input_groups = as_dict(safe_data.get("groups"))
+    filters = as_dict(safe_data.get("filters"))
+    load_factors = as_dict(safe_data.get("load_factors"))
     groups = default_groups()
-    input_groups = (data or {}).get("groups", {})
     for group_code in GROUP_META:
-        rows = input_groups.get(group_code, [])
+        rows = as_list(input_groups.get(group_code))
+        # 行数上限防御：异常超大 payload 截断
         normalized_rows = [
-            normalize_row(row, group_code, index) for index, row in enumerate(rows)
+            normalize_row(row, group_code, index)
+            for index, row in enumerate(rows[:500])
         ]
         groups[group_code] = normalized_rows
 
     result = {
         "filters": {
-            "breaker_brand": str((data or {}).get("filters", {}).get("breaker_brand", "")),
-            "wire_brand": str((data or {}).get("filters", {}).get("wire_brand", "")),
+            "breaker_brand": str(filters.get("breaker_brand", "") or "")[:50],
+            "wire_brand": str(filters.get("wire_brand", "") or "")[:50],
         },
         "load_factors": {
-            "kx": normalize_number((data or {}).get("load_factors", {}).get("kx"), default=1),
-            "cos": normalize_number((data or {}).get("load_factors", {}).get("cos"), default=0.8),
+            "kx": normalize_number(load_factors.get("kx"), default=1),
+            "cos": normalize_number(load_factors.get("cos"), default=0.8),
         },
         "groups": groups,
     }
@@ -385,19 +426,20 @@ def row_total_capacity(row: dict[str, Any]) -> float:
 
 
 def rebalance_project_data(project_data: dict[str, Any]) -> dict[str, Any]:
-    groups = project_data.get("groups", {})
+    safe_data = as_dict(project_data)
+    groups = as_dict(safe_data.get("groups"))
     normalized_groups = default_groups()
     phase_totals = {phase: 0.0 for phase in PHASES}
     total_capacity = 0.0
     row_count = 0
     load_factors = {
-        "kx": normalize_number(project_data.get("load_factors", {}).get("kx"), default=1),
-        "cos": normalize_number(project_data.get("load_factors", {}).get("cos"), default=0.8),
+        "kx": normalize_number(as_dict(safe_data.get("load_factors")).get("kx"), default=1),
+        "cos": normalize_number(as_dict(safe_data.get("load_factors")).get("cos"), default=0.8),
     }
 
     for group_code in GROUP_META:
-        rows = groups.get(group_code, [])
-        normalized_rows = [normalize_row(row, group_code, index) for index, row in enumerate(rows)]
+        rows = as_list(groups.get(group_code))
+        normalized_rows = [normalize_row(row, group_code, index) for index, row in enumerate(rows[:500])]
         normalized_groups[group_code] = normalized_rows
 
     single_phase_rows: list[tuple[str, int, float]] = []
@@ -437,8 +479,8 @@ def rebalance_project_data(project_data: dict[str, Any]) -> dict[str, Any]:
     }
     return {
         "filters": {
-            "breaker_brand": str(project_data.get("filters", {}).get("breaker_brand", "")),
-            "wire_brand": str(project_data.get("filters", {}).get("wire_brand", "")),
+            "breaker_brand": str(as_dict(safe_data.get("filters")).get("breaker_brand", "") or "")[:50],
+            "wire_brand": str(as_dict(safe_data.get("filters")).get("wire_brand", "") or "")[:50],
         },
         "load_factors": load_factors,
         "groups": normalized_groups,
@@ -458,7 +500,13 @@ def fetch_all_configs() -> dict[str, Any]:
 
     grouped: dict[str, list[dict[str, Any]]] = {category: [] for category in CONFIG_CATEGORIES}
     for row in rows:
-        metadata = json.loads(row["metadata_json"] or "{}")
+        try:
+            metadata = json.loads(row["metadata_json"] or "{}")
+            if not isinstance(metadata, dict):
+                raise ValueError("metadata_json 不是对象")
+        except (ValueError, TypeError) as error:
+            print(f"[warn] 配置项 {row['id']} metadata 损坏，回退空对象: {error}")
+            metadata = {}
         grouped[row["category"]].append(
             {
                 "id": row["id"],
@@ -490,12 +538,15 @@ def fetch_project_list() -> list[dict[str, Any]]:
     with get_db() as conn:
         rows = conn.execute(
             """
-            SELECT id, name, description, created_at, updated_at
+            SELECT id, name, description, is_template, created_at, updated_at
             FROM projects
             ORDER BY updated_at DESC
             """
         ).fetchall()
-    return [dict(row) for row in rows]
+    return [
+        {**dict(row), "is_template": bool(row["is_template"])}
+        for row in rows
+    ]
 
 
 class BreakerConfigPayload(BaseModel):
@@ -709,7 +760,7 @@ async def api_create_project(payload: ProjectSavePayload) -> JSONResponse:
                 project_id,
                 payload.name.strip(),
                 payload.description.strip(),
-                json.dumps(normalized_data, ensure_ascii=False),
+                dump_project_data(normalized_data),
                 timestamp,
                 timestamp,
             ),
@@ -736,7 +787,7 @@ async def api_update_project(project_id: str, payload: ProjectSavePayload) -> JS
             (
                 payload.name.strip(),
                 payload.description.strip(),
-                json.dumps(normalized_data, ensure_ascii=False),
+                dump_project_data(normalized_data),
                 now_iso(),
                 project_id,
             ),
@@ -755,13 +806,34 @@ async def api_update_project(project_id: str, payload: ProjectSavePayload) -> JS
 @app.post("/api/projects/{project_id}/duplicate", response_class=JSONResponse)
 async def api_duplicate_project(project_id: str) -> JSONResponse:
     source = get_project_or_404(project_id)
-    duplicated_name = f"{source['name']} - 副本"
+    # 截断到限长内再拼接后缀，避免源名接近 120 字符时 422
+    base_name = source["name"][:110]
+    duplicated_name = f"{base_name} - 副本"
     payload = ProjectSavePayload(
         name=duplicated_name,
         description=source["description"],
         data=source["data"],
     )
     return await api_create_project(payload)
+
+
+@app.post("/api/projects/{project_id}/set-template", response_class=JSONResponse)
+async def api_set_template(project_id: str, payload: dict[str, Any]) -> JSONResponse:
+    is_template = bool(payload.get("is_template"))
+    with get_db() as conn:
+        updated = conn.execute(
+            "UPDATE projects SET is_template = ?, updated_at = ? WHERE id = ?",
+            (1 if is_template else 0, now_iso(), project_id),
+        )
+    if updated.rowcount == 0:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    return JSONResponse(
+        {
+            "ok": True,
+            "is_template": is_template,
+            "projects": fetch_project_list(),
+        }
+    )
 
 
 @app.post("/api/rebalance", response_class=JSONResponse)
