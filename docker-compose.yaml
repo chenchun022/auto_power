@@ -9,6 +9,11 @@ services:
       - "9548:8000"
     environment:
       TZ: Asia/Shanghai
+      # 首次部署种子管理员（仅空库时生效一次；不设置 ADMIN_PASSWORD 则自动生成
+      # 并打进容器日志：docker logs auto_power | grep 初始密码，
+      # 登录后在网页「账号设置」中修改用户名与密码）
+      # ADMIN_USERNAME: admin
+      # ADMIN_PASSWORD: "ChangeMe-Please-123"
     volumes:
       - ./config:/app/config
     restart: unless-stopped

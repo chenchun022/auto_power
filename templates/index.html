@@ -4,8 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ app_title }}</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="/static/tailwind.local.js"></script>
+    <link href="/static/font-awesome.min.css" rel="stylesheet">
+    <!-- 拼音匹配：GitHub 开源库 pinyin-pro（MIT），match() 支持首字母/全拼/混合匹配；前端资源全部本地化，无外网 CDN 依赖 -->
+    <script src="/static/pinyin-pro.local.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -46,6 +48,16 @@
             .section-band {
                 @apply rounded-lg border border-gray-200 bg-white;
             }
+            /* 用途候选下拉 */
+            .usage-ac-list {
+                @apply absolute z-40 mt-1 max-h-56 w-full min-w-[240px] overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg;
+            }
+            .usage-ac-item {
+                @apply flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-sm text-gray-700;
+            }
+            .usage-ac-item.active {
+                @apply bg-primary/5 text-primary;
+            }
         }
     </style>
 </head>
@@ -61,7 +73,10 @@
                     <p class="text-sm text-gray-500">负荷计算与电器系统图协同工具</p>
                 </div>
             </div>
-            <div id="save-status" class="text-sm text-gray-500">准备就绪</div>
+            <div class="flex items-center gap-4">
+                <div id="user-chip"></div>
+                <div id="save-status" class="text-sm text-gray-500">准备就绪</div>
+            </div>
         </div>
         <div class="mx-auto flex w-full max-w-none gap-2 px-6 pb-4">
             <button class="nav-btn nav-btn-active" data-view-btn="load-calculator">
@@ -309,6 +324,234 @@
         </button>
     </div>
 
+    <!-- 账号设置弹窗（改用户名 / 改密码） -->
+    <div id="profile-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-4">
+        <div class="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
+            <div class="mb-4 flex items-center justify-between">
+                <h3 class="text-base font-semibold">账号设置</h3>
+                <button id="profile-close-btn" class="icon-btn" title="关闭"><i class="fa fa-times"></i></button>
+            </div>
+
+            <!-- 改用户名 -->
+            <div class="mb-5">
+                <label class="mb-1 block text-sm font-medium text-gray-700">用户名</label>
+                <div class="flex gap-2">
+                    <input id="profile-username" class="input-base flex-1" maxlength="32" placeholder="2-32 位，中英文、数字、下划线">
+                    <button id="profile-username-btn" class="whitespace-nowrap rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white transition hover:bg-primary/90">保存用户名</button>
+                </div>
+            </div>
+
+            <div class="mb-4 border-t border-gray-100"></div>
+
+            <!-- 改密码 -->
+            <div class="space-y-3">
+                <p class="text-sm font-medium text-gray-700">修改密码</p>
+                <input id="profile-old-pwd" type="password" class="input-base" placeholder="当前密码" maxlength="128" autocomplete="current-password">
+                <input id="profile-new-pwd" type="password" class="input-base" placeholder="新密码（至少10位，含大写、小写、数字）" maxlength="128" autocomplete="new-password">
+                <input id="profile-new-pwd2" type="password" class="input-base" placeholder="再次输入新密码" maxlength="128" autocomplete="new-password">
+                <button id="profile-pwd-btn" class="w-full rounded-lg bg-primary py-2 text-sm font-medium text-white transition hover:bg-primary/90">修改密码</button>
+            </div>
+
+            <p id="profile-msg" class="mt-3 min-h-[20px] text-center text-sm"></p>
+        </div>
+    </div>
+
+    <!-- 管理员：SMTP 邮箱服务弹窗 -->
+    <div id="smtp-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-4">
+        <div class="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl bg-white p-6 shadow-2xl">
+            <div class="mb-4 flex items-center justify-between">
+                <h3 class="text-base font-semibold"><i class="fa fa-envelope-o text-gray-400"></i> 邮箱服务（SMTP）</h3>
+                <button id="smtp-close-btn" class="icon-btn" title="关闭"><i class="fa fa-times"></i></button>
+            </div>
+            <p class="mb-4 text-sm text-gray-500">配置邮件服务器后，普通用户注册将通过邮箱验证码验证。保存后建议发送测试邮件确认可用。</p>
+            <div class="grid gap-4 sm:grid-cols-2">
+                <div>
+                    <label class="mb-1 block text-sm font-medium text-gray-700">SMTP 服务器</label>
+                    <input id="smtp-host" class="input-base" placeholder="如 smtp.qq.com" maxlength="253">
+                </div>
+                <div>
+                    <label class="mb-1 block text-sm font-medium text-gray-700">端口</label>
+                    <input id="smtp-port" class="input-base" inputmode="numeric" placeholder="465（SSL）/ 587（STARTTLS）" maxlength="5">
+                </div>
+                <div>
+                    <label class="mb-1 block text-sm font-medium text-gray-700">账号</label>
+                    <input id="smtp-username" class="input-base" placeholder="通常为邮箱地址" maxlength="254" autocomplete="off">
+                </div>
+                <div>
+                    <label class="mb-1 block text-sm font-medium text-gray-700">密码 / 授权码</label>
+                    <input id="smtp-password" type="password" class="input-base" placeholder="留空表示沿用已保存的密码" maxlength="254" autocomplete="new-password">
+                </div>
+                <div>
+                    <label class="mb-1 block text-sm font-medium text-gray-700">发件邮箱</label>
+                    <input id="smtp-from" class="input-base" placeholder="显示在邮件发件人位置" maxlength="254">
+                </div>
+                <div>
+                    <label class="mb-1 block text-sm font-medium text-gray-700">发件人名称</label>
+                    <input id="smtp-from-name" class="input-base" placeholder="如：电力负荷计算工具" maxlength="64">
+                </div>
+                <label class="flex items-center gap-2 text-sm text-gray-700 sm:col-span-2">
+                    <input id="smtp-use-tls" type="checkbox" class="h-4 w-4 rounded border-gray-300">
+                    使用 SSL 直连（465 端口勾选；587 端口走 STARTTLS 自动协商，不勾选）
+                </label>
+            </div>
+            <div class="mt-4 flex items-center gap-3">
+                <button id="smtp-save-btn" class="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white transition hover:bg-primary/90">
+                    <i class="fa fa-save"></i><span>保存配置</span>
+                </button>
+                <button id="smtp-test-btn" class="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 transition hover:border-primary hover:text-primary">
+                    <i class="fa fa-paper-plane"></i><span>发送测试邮件</span>
+                </button>
+                <span id="smtp-status" class="text-sm text-gray-500"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 管理员：用户管理弹窗（用户列表 + 注册开关） -->
+    <div id="users-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-4">
+        <div class="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white p-6 shadow-2xl">
+            <div class="mb-4 flex items-center justify-between">
+                <h3 class="text-base font-semibold"><i class="fa fa-users text-gray-400"></i> 用户管理</h3>
+                <button id="users-close-btn" class="icon-btn" title="关闭"><i class="fa fa-times"></i></button>
+            </div>
+
+            <!-- 注册开关 -->
+            <div class="mb-4 flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                <div>
+                    <p class="text-sm font-medium text-gray-800">开放用户注册</p>
+                    <p class="mt-0.5 text-xs text-gray-500">关闭后注册页仅展示提示，发码与注册接口同时拒绝新请求</p>
+                </div>
+                <label class="relative inline-flex cursor-pointer items-center">
+                    <input id="registration-toggle" type="checkbox" class="peer sr-only">
+                    <div class="h-6 w-11 rounded-full bg-gray-300 transition peer-checked:bg-primary"></div>
+                    <div class="absolute left-0.5 h-5 w-5 rounded-full bg-white shadow transition-all peer-checked:translate-x-5"></div>
+                </label>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-gray-200 text-left text-xs text-gray-500">
+                            <th class="py-2 pr-3">用户</th>
+                            <th class="py-2 pr-3">邮箱</th>
+                            <th class="py-2 pr-3">角色</th>
+                            <th class="py-2 pr-3">注册时间</th>
+                            <th class="py-2 pr-3">活跃会话</th>
+                            <th class="py-2 pr-3">记忆条目</th>
+                            <th class="py-2 text-right">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-tbody"></tbody>
+                </table>
+            </div>
+            <p id="users-msg" class="mt-3 min-h-[20px] text-center text-sm"></p>
+        </div>
+    </div>
+
+    <!-- 管理员：备份与恢复弹窗（R2/S3） -->
+    <div id="backup-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-4">
+        <div class="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white p-6 shadow-2xl">
+            <div class="mb-4 flex items-center justify-between">
+                <h3 class="text-base font-semibold"><i class="fa fa-cloud-upload text-gray-400"></i> 备份与恢复（R2/S3）</h3>
+                <button id="backup-close-btn" class="icon-btn" title="关闭"><i class="fa fa-times"></i></button>
+            </div>
+
+            <!-- 存储配置 -->
+            <div class="mb-5 rounded-lg border border-gray-200 p-4">
+                <p class="mb-3 text-sm font-medium text-gray-800">存储配置（Cloudflare R2 / MinIO 等 S3 兼容存储）</p>
+                <div class="grid gap-3 sm:grid-cols-2">
+                    <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-600">Account ID（R2）</label>
+                        <input id="bk-account-id" class="input-base" placeholder="R2 账户 ID" maxlength="128" autocomplete="off">
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-600">或自定义端点（MinIO）</label>
+                        <input id="bk-endpoint" class="input-base" placeholder="如 http://192.168.1.10:9000" maxlength="512" autocomplete="off">
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-600">存储桶 Bucket *</label>
+                        <input id="bk-bucket" class="input-base" maxlength="128" autocomplete="off">
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-600">Region</label>
+                        <input id="bk-region" class="input-base" placeholder="默认 auto" maxlength="64" autocomplete="off">
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-600">Access Key *</label>
+                        <input id="bk-access-key" class="input-base" maxlength="254" autocomplete="off">
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-600">Secret Key *</label>
+                        <input id="bk-secret-key" type="password" class="input-base" placeholder="留空表示沿用已保存的密钥" maxlength="254" autocomplete="new-password">
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-600">对象前缀 Prefix</label>
+                        <input id="bk-prefix" class="input-base" placeholder="默认 backups/autopower" maxlength="254" autocomplete="off">
+                    </div>
+                    <label class="flex items-center gap-2 self-end text-sm text-gray-700">
+                        <input id="bk-force-path" type="checkbox" class="h-4 w-4 rounded border-gray-300">
+                        Path-Style 寻址（MinIO 勾选）
+                    </label>
+                </div>
+                <div class="mt-3 flex items-center gap-2">
+                    <button id="bk-save-btn" class="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white transition hover:bg-primary/90">保存配置</button>
+                    <button id="bk-test-btn" class="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 transition hover:border-primary hover:text-primary">测试连接</button>
+                    <span id="bk-cfg-status" class="text-sm text-gray-500"></span>
+                </div>
+            </div>
+
+            <!-- 定时配置 -->
+            <div class="mb-5 rounded-lg border border-gray-200 p-4">
+                <p class="mb-3 text-sm font-medium text-gray-800">定时备份</p>
+                <div class="grid gap-3 sm:grid-cols-4">
+                    <label class="flex items-center gap-2 text-sm text-gray-700">
+                        <input id="bk-schedule-enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300">
+                        启用
+                    </label>
+                    <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-600">Cron（分 时 日 月 周）</label>
+                        <input id="bk-cron" class="input-base" placeholder="如 0 3 * * *" maxlength="128" autocomplete="off">
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-600">保留天数</label>
+                        <input id="bk-retain-days" class="input-base" inputmode="numeric" placeholder="默认 30" maxlength="4">
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-600">保留份数</label>
+                        <input id="bk-retain-count" class="input-base" inputmode="numeric" placeholder="0 = 不限" maxlength="4">
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <button id="bk-schedule-save-btn" class="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white transition hover:bg-primary/90">保存定时配置</button>
+                    <span id="bk-schedule-status" class="ml-2 text-sm text-gray-500"></span>
+                </div>
+            </div>
+
+            <!-- 备份记录 -->
+            <div class="mb-2 flex items-center justify-between">
+                <p class="text-sm font-medium text-gray-800">备份记录</p>
+                <button id="bk-run-btn" class="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white transition hover:bg-primary/90 disabled:opacity-60">
+                    <i class="fa fa-cloud-upload"></i><span>立即备份</span>
+                </button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-gray-200 text-left text-xs text-gray-500">
+                            <th class="py-2 pr-3">文件</th>
+                            <th class="py-2 pr-3">大小</th>
+                            <th class="py-2 pr-3">时间</th>
+                            <th class="py-2 pr-3">来源</th>
+                            <th class="py-2 pr-3">状态</th>
+                            <th class="py-2 text-right">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bk-tbody"><tr><td colspan="6" class="py-4 text-center text-xs text-gray-400">暂无备份</td></tr></tbody>
+                </table>
+            </div>
+            <p id="bk-msg" class="mt-3 min-h-[20px] text-center text-sm"></p>
+        </div>
+    </div>
+
     <!-- 删除二次确认弹窗（居中 + 红色警告） -->
     <div id="confirm-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-4">
         <div class="w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl">
@@ -433,6 +676,212 @@
             return { ok: true, changed: true };
         }
 
+        // ===== 用途记忆 + 拼音智能候选 =====
+        // 匹配算法：GitHub 开源库 pinyin-pro 的 match()——同时支持
+        // 汉字原文 / 全拼（zhaoming）/ 首字母（zm / 混合 zmcz）三种匹配。
+        // CDN 失败时回退 /static/pinyin-pro.local.js（同一份 UMD 包）。
+        const pinyinMatch = (typeof pinyinPro !== 'undefined' && pinyinPro.match) ? pinyinPro.match : null;
+
+        const usageMemory = {
+            items: [],          // [{usage_text, capacity_kw, use_count, last_used_at}]
+        };
+
+        function normalizePinyinQuery(query) {
+            return String(query || '').trim().toLowerCase();
+        }
+
+        // 返回与查询匹配的候选（最多 8 条），排序：完全前缀 > 拼音匹配 > 使用频次
+        function searchUsageCandidates(query) {
+            const q = normalizePinyinQuery(query);
+            if (!q) {
+                return usageMemory.items.slice(0, 8);
+            }
+            const scored = [];
+            for (const item of usageMemory.items) {
+                const text = item.usage_text;
+                const lower = text.toLowerCase();
+                let score = -1;
+                if (lower.startsWith(q) || text.startsWith(query.trim())) {
+                    score = 100; // 原文前缀命中
+                } else if (lower.includes(q)) {
+                    score = 80;  // 原文包含
+                } else if (pinyinMatch) {
+                    const hit = pinyinMatch(text, q);
+                    if (Array.isArray(hit) && hit.length) {
+                        // 命中字符越多、越靠前分越高
+                        score = 40 + Math.min(hit.length, 20);
+                    }
+                }
+                if (score >= 0) {
+                    scored.push({ item, score: score + Math.min(item.use_count, 30) });
+                }
+            }
+            scored.sort((a, b) => b.score - a.score);
+            return scored.slice(0, 8).map((entry) => entry.item);
+        }
+
+        // ---- 候选浮层（单例，跟随当前输入框） ----
+        const acState = {
+            host: null,        // 当前绑定的输入框
+            listEl: null,
+            items: [],
+            activeIndex: -1,
+        };
+
+        function buildAcListEl() {
+            const el = document.createElement('div');
+            el.className = 'usage-ac-list hidden';
+            el.id = 'usage-ac-list';
+            document.body.appendChild(el);
+            return el;
+        }
+        acState.listEl = document.getElementById('usage-ac-list') || buildAcListEl();
+
+        function acItemHtml(item, query) {
+            const badge = item.capacity_kw ? `<span class="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">${escapeHtml(item.capacity_kw)} kW</span>` : '';
+            return `<span class="truncate">${escapeHtml(item.usage_text)}</span>${badge}`;
+        }
+
+        function renderAcList() {
+            const { listEl, items } = acState;
+            if (!acState.host || !items.length) {
+                listEl.classList.add('hidden');
+                return;
+            }
+            listEl.innerHTML = items.map((item, index) => `
+                <div class="usage-ac-item ${index === acState.activeIndex ? 'active' : ''}" data-ac-index="${index}">
+                    ${acItemHtml(item)}
+                </div>
+            `).join('');
+            listEl.querySelectorAll('[data-ac-index]').forEach((el) => {
+                el.addEventListener('mousedown', (event) => {
+                    // mousedown 先于 blur 触发，保证点击候选时输入框不先失焦关闭浮层
+                    event.preventDefault();
+                    applyAcSelection(Number(el.dataset.acIndex));
+                });
+            });
+            positionAcList();
+            listEl.classList.remove('hidden');
+        }
+
+        function positionAcList() {
+            if (!acState.host) {
+                return;
+            }
+            const rect = acState.host.getBoundingClientRect();
+            const listEl = acState.listEl;
+            listEl.style.left = `${rect.left}px`;
+            listEl.style.top = `${rect.bottom + window.scrollY + 4}px`;
+            listEl.style.width = `${Math.max(rect.width, 240)}px`;
+        }
+
+        function openAcFor(host, query, preselect = false) {
+            acState.host = host;
+            acState.items = searchUsageCandidates(query);
+            // preselect=false（聚焦即弹场景）：不预选，Enter 仍走"跳下一格"；
+            // 用户键入过滤或按 ↓ 后才进入选择态
+            acState.activeIndex = (preselect && acState.items.length) ? 0 : -1;
+            renderAcList();
+        }
+
+        function closeAc() {
+            acState.listEl.classList.add('hidden');
+            acState.host = null;
+            acState.items = [];
+            acState.activeIndex = -1;
+        }
+
+        function applyAcSelection(index) {
+            const item = acState.items[index];
+            if (!item || !acState.host) {
+                return;
+            }
+            const host = acState.host;
+            // P0修复：按宿主字段类型取值——容量候选填容量、用途候选才填用途文本。
+            // 此前一律填 usage_text，容量框按 Enter 会把"照明插座"写进去，
+            // 经 sanitizeDecimalInput 清洗后清空原有容量值（数据破坏）。
+            if (host.dataset.field === 'capacity_kw') {
+                if (!item.capacity_kw) {
+                    closeAc();
+                    return;
+                }
+                host.value = sanitizeDecimalInput(String(item.capacity_kw));
+            } else {
+                host.value = item.usage_text;
+            }
+            host.dispatchEvent(new Event('input', { bubbles: true }));
+            closeAc();
+            // 仅用途选择沉淀频次；容量建议是回填而非新选择
+            if (host.dataset.field !== 'capacity_kw') {
+                rememberUsage(item.usage_text, item.capacity_kw || '');
+            }
+        }
+
+        function moveAcSelection(delta) {
+            if (!acState.items.length) {
+                return;
+            }
+            acState.activeIndex = (acState.activeIndex + delta + acState.items.length) % acState.items.length;
+            renderAcList();
+            const activeEl = acState.listEl.querySelector('.active');
+            // ↑↓ 选择触发的 scrollIntoView 是程序化滚动，会冒出一次 window scroll；
+            // 短暂抑制"滚动关闭"，避免刚按 ↓ 选中就被滚动处理器把浮层关掉
+            acState.suppressScrollCloseUntil = Date.now() + 150;
+            activeEl?.scrollIntoView({ block: 'nearest' });
+        }
+
+        async function rememberUsage(usageText, capacityKw) {
+            try {
+                await apiFetch('/api/usage-memory', {
+                    method: 'POST',
+                    body: JSON.stringify({ usage: usageText, capacity_kw: capacityKw || '' })
+                });
+                // 本地同步，避免下次查询前数据滞后
+                const found = usageMemory.items.find((entry) => entry.usage_text === usageText);
+                if (found) {
+                    found.use_count += 1;
+                    if (capacityKw) {
+                        found.capacity_kw = capacityKw;
+                    }
+                } else {
+                    usageMemory.items.unshift({ usage_text: usageText, capacity_kw: capacityKw || '', use_count: 1, last_used_at: '' });
+                }
+            } catch (error) {
+                /* 未登录等场景静默失败，不打扰编辑 */
+            }
+        }
+
+        async function refreshUsageMemory() {
+            try {
+                const result = await apiFetch('/api/usage-memory');
+                usageMemory.items = result.items || [];
+            } catch (error) {
+                usageMemory.items = [];
+            }
+        }
+
+        // 容量列：光标进入时，若同一行的用途是"最近经候选选中"的记忆项，弹出容量候选
+        function openCapacitySuggestion(capacityInput) {
+            const group = capacityInput.dataset.group;
+            const rowIndex = Number(capacityInput.dataset.rowIndex);
+            const row = activeProject()?.data?.groups?.[group]?.[rowIndex];
+            if (!row?.usage) {
+                return;
+            }
+            const memory = usageMemory.items.find((entry) => entry.usage_text === row.usage && entry.capacity_kw);
+            if (!memory) {
+                return;
+            }
+            // 已有值且与候选一致时不重复弹
+            if (String(row.capacity_kw ?? '') === String(memory.capacity_kw)) {
+                return;
+            }
+            acState.host = capacityInput;
+            acState.items = [memory];
+            acState.activeIndex = 0;
+            renderAcList();
+        }
+
         const viewButtons = Array.from(document.querySelectorAll('[data-view-btn]'));
         const views = Array.from(document.querySelectorAll('[data-view]'));
         const saveStatusEl = document.getElementById('save-status');
@@ -478,7 +927,11 @@
 
         async function apiFetch(url, options = {}) {
             const response = await fetch(url, {
-                headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'fetch',  // CSRF 防护：服务端写接口要求此自定义头
+                    ...(options.headers || {})
+                },
                 ...options
             });
             if (!response.ok) {
@@ -542,12 +995,20 @@
             return `<select class="input-base" ${attrs}><option value=""></option>${html}</select>`;
         }
 
-        function createEmptyRow(groupCode) {
+        // BUG修复：回路编号不再依赖 sequence 字段，而是由组内数组位置直接生成
+        // （组前缀 + 位置+1）。此前新行 sequence=0 且 circuit_code 为空，渲染时编号
+        // 列跟着空值走，导致"新增行没有编号、序号显示 0"。
+        function circuitCodeFor(groupCode, rowIndex) {
+            return `${groupCode}${rowIndex + 1}`;
+        }
+
+        function createEmptyRow(groupCode, index) {
+            const rowIndex = Number.isInteger(index) ? index : 0;
             return {
                 id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
                 group_type: groupCode,
-                sequence: 0,
-                circuit_code: '',
+                sequence: rowIndex + 1,
+                circuit_code: circuitCodeFor(groupCode, rowIndex),
                 breaker_option: '',
                 wire_option: '',
                 phase_sequence: '',
@@ -1092,6 +1553,8 @@
             if (!project) {
                 return;
             }
+            // 重渲染会销毁全部输入框 DOM：先关闭候选浮层，避免其持有游离节点残留在页面上
+            closeAc();
             ensureProjectDataShape(project);
             renderFilterOptions();
             groupContainerEl.innerHTML = '';
@@ -1142,6 +1605,10 @@
                     tbody.appendChild(emptyTr);
                 } else {
                     rows.forEach((row, rowIndex) => {
+                        // BUG修复：渲染前强制刷新 sequence/circuit_code，使其始终等于
+                        // 组内位置（N1、N2、...），与后端 normalize_row 的生成规则一致
+                        row.sequence = rowIndex + 1;
+                        row.circuit_code = circuitCodeFor(groupCode, rowIndex);
                         tbody.appendChild(renderTableRow(groupCode, row, rowIndex));
                     });
                 }
@@ -1264,6 +1731,10 @@
             const row = activeProject().data.groups[group][rowIndex];
             if (field === 'capacity_kw') {
                 target.value = sanitizeDecimalInput(target.value);
+                // 用户开始键入容量：关闭自动弹出的候选，不再干扰
+                if (acState.host === target) {
+                    closeAc();
+                }
             }
             if (field === 'circuit_code') {
                 // 编号只在提交（回车/失焦）时应用移动，键入过程不触发保存与重排
@@ -1272,6 +1743,10 @@
             }
             row[field] = target.value;
             markDirty();
+            // 用途输入：实时刷新候选（键入即预选第一项，Enter 可直接选中）
+            if (field === 'usage') {
+                openAcFor(target, target.value, true);
+            }
             if (field === 'capacity_kw' || field === 'voltage') {
                 scheduleRebalance();
             } else {
@@ -1317,7 +1792,10 @@
             if (target.dataset.field !== 'capacity_kw') {
                 return;
             }
-            if (!event.data) {
+            // 多字符插入（浏览器自动填充、听写输入、程序化 fill）放行，
+            // 交给 onCellInput 的 sanitizeDecimalInput 统一清洗；
+            // 此前整段插入一律 preventDefault，导致 fill/自动填充静默丢失
+            if (!event.data || event.data.length > 1) {
                 return;
             }
             if (/^\d$/.test(event.data)) {
@@ -1340,6 +1818,17 @@
 
         function onCellBlur(event) {
             const target = event.target;
+            // 候选浮层随失焦关闭
+            if (acState.host === target) {
+                closeAc();
+            }
+            // 用途失焦：非空即沉淀记忆（含手输的新词条）
+            if (target.dataset.field === 'usage' && target.value.trim()) {
+                const group = target.dataset.group;
+                const rowIndex = Number(target.dataset.rowIndex);
+                const row = activeProject()?.data?.groups?.[group]?.[rowIndex];
+                rememberUsage(target.value.trim(), String(row?.capacity_kw ?? ''));
+            }
             if (target.dataset.field === 'circuit_code') {
                 // 仅当值与当前行编号不一致时尝试提交移动
                 const group = target.dataset.group;
@@ -1368,9 +1857,44 @@
             if (target.dataset.field && target.tagName === 'INPUT' && typeof target.select === 'function') {
                 target.select();
             }
+            // 容量列聚焦：若同行用途来自候选选择且记忆里带容量，自动弹出容量候选；
+            // 只弹出不拦截——用户键入的第一个字符会走 input 事件正常过滤
+            if (target.dataset.field === 'capacity_kw') {
+                openCapacitySuggestion(target);
+            }
+            // 用途列聚焦：已有记忆时直接展示热门候选（无需先输入）
+            if (target.dataset.field === 'usage') {
+                openAcFor(target, target.value);
+            }
         }
 
         function onCellKeydown(event) {
+            // 候选浮层打开时：↑↓ 选择候选，ESC 关闭且不冒泡，Enter 选中
+            if (!acState.listEl.classList.contains('hidden') && acState.host === event.target) {
+                if (event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    event.stopPropagation();   // 阻止全局方向键导航抢走 ↑↓
+                    moveAcSelection(1);
+                    return;
+                }
+                if (event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    moveAcSelection(-1);
+                    return;
+                }
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    closeAc();
+                    return;
+                }
+                if (event.key === 'Enter' && acState.activeIndex >= 0) {
+                    event.preventDefault();
+                    applyAcSelection(acState.activeIndex);
+                    return;
+                }
+            }
             if (event.target.dataset.field === 'capacity_kw') {
                 guardDecimalKeydown(event);
             }
@@ -1552,7 +2076,7 @@
 
         function addRow(groupCode, focus = false) {
             const project = activeProject();
-            project.data.groups[groupCode].push(createEmptyRow(groupCode));
+            project.data.groups[groupCode].push(createEmptyRow(groupCode, project.data.groups[groupCode].length));
             renderDiagramGroups();
             markDirty();
             scheduleAutoSave();
@@ -1565,7 +2089,7 @@
 
         function insertRowBelow(groupCode, rowIndex, focus = false) {
             const project = activeProject();
-            project.data.groups[groupCode].splice(rowIndex + 1, 0, createEmptyRow(groupCode));
+            project.data.groups[groupCode].splice(rowIndex + 1, 0, createEmptyRow(groupCode, rowIndex + 1));
             renderDiagramGroups();
             markDirty();
             scheduleAutoSave();
@@ -1670,14 +2194,18 @@
                 ? await apiFetch('/api/projects', { method: 'POST', body: JSON.stringify(payload) })
                 : await apiFetch(`/api/projects/${project.id}`, { method: 'PUT', body: JSON.stringify(payload) });
             state.projects = result.projects;
-            // 静默保存：不重绘、不替换本地数据对象（保留请求期间的新键入），仅刷新项目列表
-            if (!silent) {
+            // 保存响应不整体替换本地 data（无论静默与否）：请求飞行期间的新键入优先，
+            // 服务端快照只可能滞后于本地。另存为（asNew）时才切换到新项目。
+            if (asNew) {
                 state.activeProject = result.project;
                 projectNameEl.value = result.project.name;
                 projectDescriptionEl.value = result.project.description || '';
                 renderProjects();
                 renderDiagramGroups();
             } else {
+                // 同步派生字段（summary/相序由服务端重算），保留用户正在编辑的字段
+                mergeRebalanceResult(project, result.project.data);
+                refreshSummaryOnly();
                 renderProjects();
             }
             setSaveStatus(asNew ? '已保存为新项目' : '草稿已保存', 'success');
@@ -1719,15 +2247,19 @@
         }
 
         // M5修复: 重算响应只合并派生字段（summary/phase_sequence），不整体替换 data，
-        // 请求飞行期间用户在表格里的新键入不会被旧快照覆盖
+        // 请求飞行期间用户在表格里的新键入不会被旧快照覆盖。
+        // P2修复：按行 id 而非数组索引对齐——重算飞行期间发生行移动时，
+        // 索引对齐会把相序标到错误的行上
         function mergeRebalanceResult(project, resultData) {
             project.data.summary = resultData.summary;
             Object.keys(GROUP_META).forEach((groupCode) => {
                 const localRows = project.data.groups[groupCode] || [];
                 const serverRows = resultData.groups[groupCode] || [];
-                serverRows.forEach((serverRow, index) => {
-                    if (localRows[index]) {
-                        localRows[index].phase_sequence = serverRow.phase_sequence;
+                const byId = new Map(serverRows.map((row) => [row.id, row]));
+                localRows.forEach((localRow) => {
+                    const serverRow = byId.get(localRow.id);
+                    if (serverRow) {
+                        localRow.phase_sequence = serverRow.phase_sequence;
                     }
                 });
             });
@@ -1795,16 +2327,646 @@
                 state.configs = payload.configs;
                 state.projects = payload.projects;
                 state.activeProject = payload.active_project;
+                state.user = payload.user || null;
+                usageMemory.items = payload.usage_memory || [];
                 ensureProjectDataShape(state.activeProject);
                 projectNameEl.value = state.activeProject.name;
                 projectDescriptionEl.value = state.activeProject.description || '';
                 renderProjects();
                 renderDiagramGroups();
                 renderSettings();
+                renderUserChip();
+                initProfileModal();
+                initSmtpModal();
+                initUsersModal();
+                initBackupModal();
                 setSaveStatus('数据已就绪', 'success');
             } catch (error) {
                 setSaveStatus(error.message, 'error');
             }
+        }
+
+        // ===== 顶部用户区：未登录显示登录/注册入口，已登录显示用户名+退出 =====
+        function renderUserChip() {
+            const host = document.getElementById('user-chip');
+            if (!host) {
+                return;
+            }
+            if (state.user) {
+                const isAdmin = state.user.role === 'admin';
+                const adminBadge = isAdmin ? '<span class="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700">管理员</span>' : '';
+                host.innerHTML = `
+                    <div class="relative" id="user-menu-root">
+                        <button id="user-menu-btn" class="flex items-center gap-2 rounded-lg border border-gray-200 px-2.5 py-1.5 transition hover:border-primary">
+                            <span class="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-sm font-medium text-primary">${escapeHtml(state.user.username.slice(0, 1).toUpperCase())}</span>
+                            <span class="max-w-[120px] truncate text-sm text-gray-600">${escapeHtml(state.user.username)}</span>
+                            ${adminBadge}
+                            <i class="fa fa-angle-down text-xs text-gray-400"></i>
+                        </button>
+                        <div id="user-menu-dropdown" class="absolute right-0 z-50 mt-2 hidden w-52 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                            <button data-menu-item="profile" class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-sm text-gray-700 hover:bg-gray-100">
+                                <i class="fa fa-cog w-4 text-gray-400"></i><span>账号设置</span>
+                            </button>
+                            ${isAdmin ? `
+                            <button data-menu-item="users" class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-sm text-gray-700 hover:bg-gray-100">
+                                <i class="fa fa-users w-4 text-gray-400"></i><span>用户管理</span>
+                            </button>
+                            <button data-menu-item="smtp" class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-sm text-gray-700 hover:bg-gray-100">
+                                <i class="fa fa-envelope-o w-4 text-gray-400"></i><span>邮箱服务（SMTP）</span>
+                            </button>
+                            <button data-menu-item="backup" class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-sm text-gray-700 hover:bg-gray-100">
+                                <i class="fa fa-cloud-upload w-4 text-gray-400"></i><span>备份与恢复</span>
+                            </button>` : ''}
+                            <div class="my-1 border-t border-gray-100"></div>
+                            <button data-menu-item="logout" class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-sm text-red-600 hover:bg-red-50">
+                                <i class="fa fa-sign-out w-4"></i><span>退出登录</span>
+                            </button>
+                        </div>
+                    </div>
+                `;
+                const menuBtn = document.getElementById('user-menu-btn');
+                const dropdown = document.getElementById('user-menu-dropdown');
+                menuBtn.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    dropdown.classList.toggle('hidden');
+                });
+                document.addEventListener('click', (event) => {
+                    if (!dropdown.contains(event.target) && event.target !== menuBtn) {
+                        dropdown.classList.add('hidden');
+                    }
+                });
+                dropdown.querySelectorAll('[data-menu-item]').forEach((item) => {
+                    item.addEventListener('click', () => {
+                        dropdown.classList.add('hidden');
+                        const action = item.dataset.menuItem;
+                        if (action === 'profile') openProfileModal();
+                        if (action === 'users') openUsersModal();
+                        if (action === 'smtp') openSmtpModal();
+                        if (action === 'backup') openBackupModal();
+                        if (action === 'logout') {
+                            apiFetch('/api/auth/logout', { method: 'POST', body: '{}' })
+                                .catch(() => { /* 忽略登出失败 */ })
+                                .finally(() => { window.location.href = '/login'; });
+                        }
+                    });
+                });
+            } else {
+                host.innerHTML = `
+                    <div class="flex items-center gap-2">
+                        <a href="/login" class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 transition hover:border-primary hover:text-primary">登录</a>
+                        <a href="/register" class="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white transition hover:bg-primary/90">注册</a>
+                    </div>
+                `;
+            }
+        }
+
+        // ===== 账号设置弹窗（改用户名 / 改密码） =====
+        function openProfileModal() {
+            const modal = document.getElementById('profile-modal');
+            document.getElementById('profile-username').value = state.user.username;
+            ['profile-old-pwd', 'profile-new-pwd', 'profile-new-pwd2'].forEach((id) => { document.getElementById(id).value = ''; });
+            setProfileMsg('');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeProfileModal() {
+            const modal = document.getElementById('profile-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function setProfileMsg(text, ok = false) {
+            const el = document.getElementById('profile-msg');
+            el.textContent = text;
+            el.className = 'mt-3 min-h-[20px] text-center text-sm ' + (ok ? 'text-emerald-600' : 'text-red-600');
+        }
+
+        function initProfileModal() {
+            const modal = document.getElementById('profile-modal');
+            document.getElementById('profile-close-btn').addEventListener('click', closeProfileModal);
+            // 点击遮罩关闭
+            modal.addEventListener('mousedown', (event) => {
+                if (event.target === modal) closeProfileModal();
+            });
+
+            document.getElementById('profile-username-btn').addEventListener('click', async (event) => {
+                const newUsername = document.getElementById('profile-username').value.trim();
+                if (!/^[\u4e00-\u9fa5A-Za-z0-9_]{2,32}$/.test(newUsername)) { setProfileMsg('用户名 2-32 位，仅限中英文、数字、下划线'); return; }
+                if (newUsername === state.user.username) { setProfileMsg('用户名未变化'); return; }
+                const btn = event.currentTarget;
+                btn.disabled = true;
+                try {
+                    // 密码确认：改用户名也需要当前密码（防会话被抢后改名）
+                    const password = prompt('为确认是本人操作，请输入当前密码');
+                    if (password === null) { btn.disabled = false; return; }
+                    const result = await apiFetch('/api/profile/username', {
+                        method: 'PUT',
+                        body: JSON.stringify({ password, new_username: newUsername })
+                    });
+                    state.user.username = result.username;
+                    setProfileMsg(result.message || '用户名已更新', true);
+                    renderUserChip();
+                } catch (error) {
+                    setProfileMsg(error.message);
+                } finally {
+                    btn.disabled = false;
+                }
+            });
+
+            document.getElementById('profile-pwd-btn').addEventListener('click', async (event) => {
+                const oldPwd = document.getElementById('profile-old-pwd').value;
+                const newPwd = document.getElementById('profile-new-pwd').value;
+                const newPwd2 = document.getElementById('profile-new-pwd2').value;
+                if (!oldPwd) { setProfileMsg('请输入当前密码'); return; }
+                const failed = [];
+                if (newPwd.length < 10) failed.push('长度至少 10 位');
+                if (!/[a-z]/.test(newPwd)) failed.push('包含小写字母');
+                if (!/[A-Z]/.test(newPwd)) failed.push('包含大写字母');
+                if (!/\d/.test(newPwd)) failed.push('包含数字');
+                if (failed.length) { setProfileMsg(`新密码不满足要求：${failed.join('；')}`); return; }
+                if (newPwd !== newPwd2) { setProfileMsg('两次输入的新密码不一致'); return; }
+                if (newPwd === oldPwd) { setProfileMsg('新密码不能与当前密码相同'); return; }
+                const btn = event.currentTarget;
+                btn.disabled = true;
+                try {
+                    const result = await apiFetch('/api/profile/password', {
+                        method: 'PUT',
+                        body: JSON.stringify({ old_password: oldPwd, new_password: newPwd })
+                    });
+                    if (result.relocated) {
+                        alert(result.message || '密码已修改，请重新登录');
+                        window.location.href = '/login';
+                        return;
+                    }
+                    setProfileMsg(result.message || '密码已修改', true);
+                } catch (error) {
+                    setProfileMsg(error.message);
+                } finally {
+                    btn.disabled = false;
+                }
+            });
+        }
+
+        // ===== 管理员 SMTP 配置弹窗 =====
+        function openSmtpModal() {
+            const modal = document.getElementById('smtp-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            loadSmtpConfig();
+        }
+
+        function closeSmtpModal() {
+            const modal = document.getElementById('smtp-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        async function loadSmtpConfig() {
+            const statusEl = document.getElementById('smtp-status');
+            const fields = {
+                host: document.getElementById('smtp-host'),
+                port: document.getElementById('smtp-port'),
+                username: document.getElementById('smtp-username'),
+                password: document.getElementById('smtp-password'),
+                from_email: document.getElementById('smtp-from'),
+                from_name: document.getElementById('smtp-from-name'),
+                use_tls: document.getElementById('smtp-use-tls'),
+            };
+            statusEl.className = 'text-sm text-gray-500';
+            try {
+                const config = await apiFetch('/api/admin/smtp');
+                if (config.configured) {
+                    fields.host.value = config.host || '';
+                    fields.port.value = config.port || '';
+                    fields.username.value = config.username || '';
+                    fields.from_email.value = config.from_email || '';
+                    fields.from_name.value = config.from_name || '';
+                    fields.use_tls.checked = !!config.use_tls;
+                    fields.password.value = '';
+                    fields.password.placeholder = config.has_password ? '已保存（留空沿用）' : '必填';
+                    statusEl.textContent = '已加载现有配置';
+                } else {
+                    statusEl.textContent = '尚未配置——未配置前仅管理员可登录，用户无法自助注册';
+                }
+            } catch (error) {
+                statusEl.textContent = `加载失败：${error.message}`;
+                statusEl.className = 'text-sm text-red-600';
+            }
+        }
+
+        function initSmtpModal() {
+            const modal = document.getElementById('smtp-modal');
+            document.getElementById('smtp-close-btn').addEventListener('click', closeSmtpModal);
+            modal.addEventListener('mousedown', (event) => {
+                if (event.target === modal) closeSmtpModal();
+            });
+
+            const fields = {
+                host: document.getElementById('smtp-host'),
+                port: document.getElementById('smtp-port'),
+                username: document.getElementById('smtp-username'),
+                password: document.getElementById('smtp-password'),
+                from_email: document.getElementById('smtp-from'),
+                from_name: document.getElementById('smtp-from-name'),
+                use_tls: document.getElementById('smtp-use-tls'),
+            };
+
+            document.getElementById('smtp-save-btn').addEventListener('click', async () => {
+                const statusEl = document.getElementById('smtp-status');
+                const payload = {
+                    host: fields.host.value.trim(),
+                    port: Number(fields.port.value.trim() || '0'),
+                    username: fields.username.value.trim(),
+                    password: fields.password.value,
+                    from_email: fields.from_email.value.trim(),
+                    from_name: fields.from_name.value.trim(),
+                    use_tls: fields.use_tls.checked,
+                };
+                if (!payload.host) { statusEl.textContent = '请填写 SMTP 服务器'; statusEl.className = 'text-sm text-red-600'; return; }
+                if (!payload.port || payload.port < 1 || payload.port > 65535) { statusEl.textContent = '端口不合法'; statusEl.className = 'text-sm text-red-600'; return; }
+                statusEl.className = 'text-sm text-gray-500';
+                statusEl.textContent = '保存中...';
+                try {
+                    const result = await apiFetch('/api/admin/smtp', { method: 'PUT', body: JSON.stringify(payload) });
+                    statusEl.textContent = result.message || '已保存';
+                    fields.password.value = '';
+                    fields.password.placeholder = '已保存（留空沿用）';
+                } catch (error) {
+                    statusEl.textContent = `保存失败：${error.message}`;
+                    statusEl.className = 'text-sm text-red-600';
+                }
+            });
+
+            document.getElementById('smtp-test-btn').addEventListener('click', async () => {
+                const statusEl = document.getElementById('smtp-status');
+                statusEl.className = 'text-sm text-gray-500';
+                statusEl.textContent = '测试邮件发送中...';
+                try {
+                    const result = await apiFetch('/api/admin/smtp/test', { method: 'POST', body: '{}' });
+                    statusEl.textContent = result.message || '已发送';
+                } catch (error) {
+                    statusEl.textContent = error.message;
+                    statusEl.className = 'text-sm text-red-600';
+                }
+            });
+        }
+
+        // ===== 管理员用户管理弹窗 =====
+        function openUsersModal() {
+            const modal = document.getElementById('users-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            loadUsersList();
+            loadRegistrationToggle();
+        }
+
+        function closeUsersModal() {
+            const modal = document.getElementById('users-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function setUsersMsg(text, ok = false) {
+            const el = document.getElementById('users-msg');
+            el.textContent = text;
+            el.className = 'mt-3 min-h-[20px] text-center text-sm ' + (ok ? 'text-emerald-600' : 'text-red-600');
+        }
+
+        async function loadUsersList() {
+            const tbody = document.getElementById('users-tbody');
+            tbody.innerHTML = '<tr><td colspan="7" class="py-6 text-center text-sm text-gray-400">加载中...</td></tr>';
+            try {
+                const data = await apiFetch('/api/admin/users');
+                if (!data.items.length) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="py-6 text-center text-sm text-gray-400">暂无用户</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.items.map((u) => {
+                    const isSelf = u.id === state.user.id;
+                    const roleBadge = u.role === 'admin'
+                        ? '<span class="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700">管理员</span>'
+                        : '<span class="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">用户</span>';
+                    const roleBtn = isSelf
+                        ? '<span class="text-xs text-gray-300">（本人）</span>'
+                        : `<button data-act="role" data-id="${u.id}" data-role="${u.role === 'admin' ? 'user' : 'admin'}" data-name="${escapeHtml(u.username)}" class="text-xs text-primary hover:underline">${u.role === 'admin' ? '降为用户' : '升为管理员'}</button>`;
+                    const ops = isSelf
+                        ? '<span class="text-xs text-gray-300">—</span>'
+                        : `
+                            <button data-act="resetpwd" data-id="${u.id}" data-name="${escapeHtml(u.username)}" class="mr-2 text-xs text-primary hover:underline">重置密码</button>
+                            <button data-act="delete" data-id="${u.id}" data-name="${escapeHtml(u.username)}" class="text-xs text-red-500 hover:underline">删除</button>
+                        `;
+                    return `
+                        <tr class="border-b border-gray-100">
+                            <td class="py-2.5 pr-3 font-medium text-gray-800">${escapeHtml(u.username)}${isSelf ? ' <span class="text-xs text-gray-400">（我）</span>' : ''}</td>
+                            <td class="py-2.5 pr-3 text-gray-600">${escapeHtml(u.email)}</td>
+                            <td class="py-2.5 pr-3">${roleBadge} ${roleBtn}</td>
+                            <td class="py-2.5 pr-3 text-xs text-gray-500">${escapeHtml(String(u.created_at || '').slice(0, 10))}</td>
+                            <td class="py-2.5 pr-3 text-xs ${u.active_sessions > 0 ? 'text-emerald-600' : 'text-gray-400'}">${u.active_sessions}</td>
+                            <td class="py-2.5 pr-3 text-xs text-gray-500">${u.memory_count}</td>
+                            <td class="py-2.5 text-right whitespace-nowrap">${ops}</td>
+                        </tr>
+                    `;
+                }).join('');
+                tbody.querySelectorAll('[data-act]').forEach((btn) => {
+                    btn.addEventListener('click', () => handleUserAction(btn.dataset));
+                });
+            } catch (error) {
+                tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center text-sm text-red-500">${error.message}</td></tr>`;
+            }
+        }
+
+        async function loadRegistrationToggle() {
+            const toggle = document.getElementById('registration-toggle');
+            try {
+                const settings = await apiFetch('/api/admin/settings');
+                toggle.checked = settings.registration_open;
+            } catch (error) {
+                setUsersMsg(`设置加载失败：${error.message}`);
+            }
+        }
+
+        async function handleUserAction({ act, id, name, role }) {
+            const userId = Number(id);
+            try {
+                if (act === 'role') {
+                    if (!confirm(`确认将「${name}」${role === 'admin' ? '升为管理员' : '降为普通用户'}？`)) return;
+                    const result = await apiFetch(`/api/admin/users/${userId}/role`, { method: 'PUT', body: JSON.stringify({ role }) });
+                    setUsersMsg(result.message || '已更新', true);
+                } else if (act === 'resetpwd') {
+                    const newPassword = prompt(`为「${name}」设置新密码（至少10位，含大写、小写、数字）：`);
+                    if (!newPassword) return;
+                    const result = await apiFetch(`/api/admin/users/${userId}/password`, { method: 'PUT', body: JSON.stringify({ new_password: newPassword }) });
+                    setUsersMsg(result.message || '已重置', true);
+                } else if (act === 'delete') {
+                    if (!confirm(`确认删除用户「${name}」？该用户的会话与用途记忆将一并删除，不可恢复。`)) return;
+                    const result = await apiFetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+                    setUsersMsg(result.message || '已删除', true);
+                }
+                loadUsersList();
+            } catch (error) {
+                setUsersMsg(error.message);
+            }
+        }
+
+        function initUsersModal() {
+            const modal = document.getElementById('users-modal');
+            document.getElementById('users-close-btn').addEventListener('click', closeUsersModal);
+            modal.addEventListener('mousedown', (event) => {
+                if (event.target === modal) closeUsersModal();
+            });
+            document.getElementById('registration-toggle').addEventListener('change', async (event) => {
+                const open = event.target.checked;
+                try {
+                    const result = await apiFetch('/api/admin/settings/registration', { method: 'PUT', body: JSON.stringify({ open }) });
+                    setUsersMsg(result.message || '已更新', true);
+                } catch (error) {
+                    setUsersMsg(error.message);
+                    event.target.checked = !open;  // 失败回滚
+                }
+            });
+        }
+
+        // ===== 管理员备份与恢复弹窗（R2/S3） =====
+        let backupPollTimer = null;
+
+        function openBackupModal() {
+            const modal = document.getElementById('backup-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            loadBackupConfig();
+            loadBackupSchedule();
+            loadBackupRecords();
+        }
+
+        function closeBackupModal() {
+            const modal = document.getElementById('backup-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            if (backupPollTimer) { clearInterval(backupPollTimer); backupPollTimer = null; }
+        }
+
+        function setBkMsg(text, ok = false) {
+            const el = document.getElementById('bk-msg');
+            el.textContent = text;
+            el.className = 'mt-3 min-h-[20px] text-center text-sm ' + (ok ? 'text-emerald-600' : 'text-red-600');
+        }
+
+        function bkCollectConfig() {
+            return {
+                endpoint: document.getElementById('bk-endpoint').value.trim(),
+                account_id: document.getElementById('bk-account-id').value.trim(),
+                region: document.getElementById('bk-region').value.trim(),
+                bucket: document.getElementById('bk-bucket').value.trim(),
+                access_key: document.getElementById('bk-access-key').value.trim(),
+                secret_key: document.getElementById('bk-secret-key').value,
+                prefix: document.getElementById('bk-prefix').value.trim(),
+                force_path_style: document.getElementById('bk-force-path').checked,
+            };
+        }
+
+        async function loadBackupConfig() {
+            const statusEl = document.getElementById('bk-cfg-status');
+            statusEl.className = 'text-sm text-gray-500';
+            try {
+                const cfg = await apiFetch('/api/admin/backup/s3-config');
+                if (cfg.configured) {
+                    document.getElementById('bk-endpoint').value = cfg.endpoint || '';
+                    document.getElementById('bk-account-id').value = cfg.account_id || '';
+                    document.getElementById('bk-region').value = cfg.region || '';
+                    document.getElementById('bk-bucket').value = cfg.bucket || '';
+                    document.getElementById('bk-access-key').value = cfg.access_key || '';
+                    document.getElementById('bk-prefix').value = cfg.prefix || '';
+                    document.getElementById('bk-force-path').checked = !!cfg.force_path_style;
+                    document.getElementById('bk-secret-key').value = '';
+                    document.getElementById('bk-secret-key').placeholder = '已保存（留空沿用）';
+                    statusEl.textContent = '已加载现有配置';
+                } else {
+                    statusEl.textContent = '尚未配置';
+                }
+            } catch (error) {
+                statusEl.textContent = `加载失败：${error.message}`;
+                statusEl.className = 'text-sm text-red-600';
+            }
+        }
+
+        async function loadBackupSchedule() {
+            const statusEl = document.getElementById('bk-schedule-status');
+            try {
+                const cfg = await apiFetch('/api/admin/backup/schedule');
+                document.getElementById('bk-schedule-enabled').checked = !!cfg.enabled;
+                document.getElementById('bk-cron').value = cfg.cron_expr || '';
+                document.getElementById('bk-retain-days').value = cfg.retain_days || '';
+                document.getElementById('bk-retain-count').value = cfg.retain_count || '';
+            } catch (error) {
+                statusEl.textContent = `加载失败：${error.message}`;
+            }
+        }
+
+        function fmtSize(bytes) {
+            if (!bytes) return '—';
+            if (bytes < 1024) return `${bytes} B`;
+            if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+            return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+        }
+
+        function fmtTime(ts) {
+            if (!ts) return '—';
+            return new Date(ts * 1000).toLocaleString('zh-CN', { hour12: false });
+        }
+
+        async function loadBackupRecords() {
+            const tbody = document.getElementById('bk-tbody');
+            try {
+                const data = await apiFetch('/api/admin/backup/records');
+                if (!data.items.length) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="py-4 text-center text-xs text-gray-400">暂无备份</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.items.map((r) => {
+                    let status;
+                    if (r.status === 'running') status = `<span class="text-amber-600"><i class="fa fa-refresh fa-spin"></i> ${r.progress === 'uploading' ? '上传中' : '导出中'}</span>`;
+                    else if (r.status === 'completed') status = '<span class="text-emerald-600">完成</span>';
+                    else status = `<span class="text-red-500" title="${escapeHtml(r.error_message || '')}">失败</span>`;
+                    let restore = '';
+                    if (r.restore_status === 'running') restore = ' <span class="text-amber-600">（恢复中）</span>';
+                    if (r.restore_status === 'completed') restore = ' <span class="text-emerald-600">（已恢复）</span>';
+                    const canOperate = r.status === 'completed';
+                    const ops = canOperate ? `
+                        <button data-bk-act="download" data-id="${r.id}" class="mr-2 text-xs text-primary hover:underline">下载</button>
+                        <button data-bk-act="restore" data-id="${r.id}" class="mr-2 text-xs text-amber-600 hover:underline">恢复</button>
+                        <button data-bk-act="delete" data-id="${r.id}" class="text-xs text-red-500 hover:underline">删除</button>
+                    ` : (r.status === 'failed' ? `<button data-bk-act="delete" data-id="${r.id}" class="text-xs text-red-500 hover:underline">删除</button>` : '—');
+                    return `
+                        <tr class="border-b border-gray-100">
+                            <td class="py-2.5 pr-3 text-xs text-gray-700" title="${escapeHtml(r.s3_key)}">${escapeHtml(r.file_name)}</td>
+                            <td class="py-2.5 pr-3 text-xs text-gray-500">${fmtSize(r.size_bytes)}</td>
+                            <td class="py-2.5 pr-3 text-xs text-gray-500">${fmtTime(r.started_at)}</td>
+                            <td class="py-2.5 pr-3 text-xs text-gray-500">${escapeHtml(r.triggered_by || '')}</td>
+                            <td class="py-2.5 pr-3 text-xs">${status}${restore}</td>
+                            <td class="py-2.5 text-right whitespace-nowrap">${ops}</td>
+                        </tr>
+                    `;
+                }).join('');
+                tbody.querySelectorAll('[data-bk-act]').forEach((btn) => {
+                    btn.addEventListener('click', () => handleBackupAction(btn.dataset.bkAct, btn.dataset.id));
+                });
+                // 有进行中的备份/恢复时自动轮询刷新
+                const busy = data.backing_up || data.restoring || data.items.some((r) => r.status === 'running' || r.restore_status === 'running');
+                if (busy && !backupPollTimer) {
+                    backupPollTimer = setInterval(loadBackupRecords, 2000);
+                } else if (!busy && backupPollTimer) {
+                    clearInterval(backupPollTimer);
+                    backupPollTimer = null;
+                }
+            } catch (error) {
+                tbody.innerHTML = `<tr><td colspan="6" class="py-4 text-center text-xs text-red-500">${error.message}</td></tr>`;
+            }
+        }
+
+        async function handleBackupAction(act, id) {
+            try {
+                if (act === 'download') {
+                    const result = await apiFetch(`/api/admin/backup/records/${id}/download-url`);
+                    window.open(result.url, '_blank');
+                } else if (act === 'restore') {
+                    if (!confirm('确认恢复该备份？当前数据库将被替换（会自动留一份 .bak 后悔药），完成后建议重启服务。')) return;
+                    const result = await apiFetch(`/api/admin/backup/records/${id}/restore`, { method: 'POST', body: '{}' });
+                    setBkMsg(result.message || '恢复已启动', true);
+                    loadBackupRecords();
+                } else if (act === 'delete') {
+                    if (!confirm('确认删除该备份？存储桶中的对象将一并删除。')) return;
+                    const result = await apiFetch(`/api/admin/backup/records/${id}/delete`, { method: 'POST', body: '{}' });
+                    setBkMsg(result.message || '已删除', true);
+                    loadBackupRecords();
+                }
+            } catch (error) {
+                setBkMsg(error.message);
+            }
+        }
+
+        function initBackupModal() {
+            const modal = document.getElementById('backup-modal');
+            document.getElementById('backup-close-btn').addEventListener('click', closeBackupModal);
+            modal.addEventListener('mousedown', (event) => {
+                if (event.target === modal) closeBackupModal();
+            });
+
+            document.getElementById('bk-save-btn').addEventListener('click', async (event) => {
+                const btn = event.currentTarget;
+                const statusEl = document.getElementById('bk-cfg-status');
+                const payload = bkCollectConfig();
+                if (!payload.bucket) { statusEl.textContent = '请填写存储桶'; statusEl.className = 'text-sm text-red-600'; return; }
+                if (!payload.access_key) { statusEl.textContent = '请填写 Access Key'; statusEl.className = 'text-sm text-red-600'; return; }
+                if (!payload.endpoint && !payload.account_id) { statusEl.textContent = 'Account ID 与自定义端点至少填一项'; statusEl.className = 'text-sm text-red-600'; return; }
+                btn.disabled = true;
+                statusEl.className = 'text-sm text-gray-500';
+                statusEl.textContent = '保存中...';
+                try {
+                    const result = await apiFetch('/api/admin/backup/s3-config', { method: 'PUT', body: JSON.stringify(payload) });
+                    statusEl.textContent = result.message || '已保存';
+                    document.getElementById('bk-secret-key').value = '';
+                    document.getElementById('bk-secret-key').placeholder = '已保存（留空沿用）';
+                } catch (error) {
+                    statusEl.textContent = error.message;
+                    statusEl.className = 'text-sm text-red-600';
+                } finally {
+                    btn.disabled = false;
+                }
+            });
+
+            document.getElementById('bk-test-btn').addEventListener('click', async (event) => {
+                const btn = event.currentTarget;
+                const statusEl = document.getElementById('bk-cfg-status');
+                btn.disabled = true;
+                statusEl.className = 'text-sm text-gray-500';
+                statusEl.textContent = '测试连接中...';
+                try {
+                    const result = await apiFetch('/api/admin/backup/s3-config/test', { method: 'POST', body: JSON.stringify(bkCollectConfig()) });
+                    statusEl.textContent = result.message || '连接成功';
+                } catch (error) {
+                    statusEl.textContent = error.message;
+                    statusEl.className = 'text-sm text-red-600';
+                } finally {
+                    btn.disabled = false;
+                }
+            });
+
+            document.getElementById('bk-schedule-save-btn').addEventListener('click', async (event) => {
+                const btn = event.currentTarget;
+                const statusEl = document.getElementById('bk-schedule-status');
+                const payload = {
+                    enabled: document.getElementById('bk-schedule-enabled').checked,
+                    cron_expr: document.getElementById('bk-cron').value.trim(),
+                    retain_days: Number(document.getElementById('bk-retain-days').value.trim() || '0') || 0,
+                    retain_count: Number(document.getElementById('bk-retain-count').value.trim() || '0') || 0,
+                };
+                btn.disabled = true;
+                statusEl.className = 'text-sm text-gray-500';
+                try {
+                    const result = await apiFetch('/api/admin/backup/schedule', { method: 'PUT', body: JSON.stringify(payload) });
+                    statusEl.textContent = result.message || '已保存';
+                } catch (error) {
+                    statusEl.textContent = error.message;
+                    statusEl.className = 'text-sm text-red-600';
+                } finally {
+                    btn.disabled = false;
+                }
+            });
+
+            document.getElementById('bk-run-btn').addEventListener('click', async (event) => {
+                const btn = event.currentTarget;
+                btn.disabled = true;
+                setBkMsg('备份已启动...', true);
+                try {
+                    await apiFetch('/api/admin/backup/records', { method: 'POST', body: '{}' });
+                    loadBackupRecords();
+                } catch (error) {
+                    setBkMsg(error.message);
+                } finally {
+                    setTimeout(() => { btn.disabled = false; }, 2000);
+                }
+            });
         }
 
         breakerFilterEl.addEventListener('change', () => {
@@ -1889,6 +3051,21 @@
         });
 
         document.addEventListener('keydown', handleArrowNavigation);
+
+        // 候选浮层：点击页面其他位置 / 窗口滚动时关闭
+        document.addEventListener('mousedown', (event) => {
+            if (acState.host && !acState.listEl.contains(event.target) && event.target !== acState.host) {
+                closeAc();
+            }
+        });
+        window.addEventListener('scroll', (event) => {
+            // 候选列表自身可滚动（max-h-56）：滚动它不应关闭浮层
+            // 键盘 ↑↓ 的程序化滚动（150ms 抑制窗口）同样不应关闭浮层
+            if (acState.host && Date.now() > (acState.suppressScrollCloseUntil || 0)
+                && event.target !== acState.listEl && !acState.listEl.contains(event.target)) {
+                closeAc();
+            }
+        }, true);
 
         bootstrap();
     </script>

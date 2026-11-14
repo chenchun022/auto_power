@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ app_title }} · {{ '注册' if mode == 'register' else '登录' }}</title>
+    <script src="/static/tailwind.local.js"></script>
+    <link href="/static/font-awesome.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: { primary: '#165DFF', ink: '#1D2129' },
+                    fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] }
+                }
+            }
+        };
+    </script>
+    <style>
+        .input-base { width: 100%; border-radius: 0.5rem; border: 1px solid #e5e7eb; background: #fff; padding: 0.5rem 0.75rem; font-size: 0.875rem; outline: none; transition: border-color .15s, box-shadow .15s; }
+        .input-base:focus { border-color: #165DFF; box-shadow: 0 0 0 3px rgba(22,93,255,.15); }
+        .msg-error { color: #dc2626; }
+        .msg-ok { color: #059669; }
+    </style>
+</head>
+<body class="min-h-screen bg-gray-50 font-sans text-ink flex items-center justify-center p-4">
+    <div class="w-full max-w-md">
+        <div class="mb-6 flex items-center justify-center gap-3">
+            <div class="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <i class="fa fa-bolt text-lg"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-semibold">{{ app_title }}</h1>
+                <p class="text-sm text-gray-500">{{ '创建新账号' if mode == 'register' else '登录继续使用' }}</p>
+            </div>
+        </div>
+
+        <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            <!-- 模式切换 -->
+            <div class="mb-5 grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1 text-sm font-medium">
+                <a href="/login" class="rounded-md py-2 text-center transition {{ 'bg-white text-primary shadow-sm' if mode == 'login' else 'text-gray-500 hover:text-gray-700' }}">登录</a>
+                <a href="/register" class="rounded-md py-2 text-center transition {{ 'bg-white text-primary shadow-sm' if mode == 'register' else 'text-gray-500 hover:text-gray-700' }}">注册</a>
+            </div>
+
+            {% if mode == 'login' %}
+            <form id="login-form" class="space-y-4" novalidate>
+                <div>
+                    <label class="mb-1 block text-sm font-medium text-gray-700">用户名或邮箱</label>
+                    <input id="f-login" class="input-base" autocomplete="username" maxlength="254" required>
+                </div>
+                <div>
+                    <label class="mb-1 block text-sm font-medium text-gray-700">密码</label>
+                    <div class="relative">
+                        <input id="f-password" type="password" class="input-base pr-10" autocomplete="current-password" maxlength="128" required>
+                        <button type="button" id="toggle-pwd" class="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-gray-400 hover:text-gray-600" tabindex="-1">
+                            <i class="fa fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+                <p id="login-msg" class="min-h-[20px] text-sm"></p>
+                <button type="submit" id="login-submit" class="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-white transition hover:bg-primary/90 disabled:opacity-60">
+                    登录
+                </button>
+            </form>
+            {% else %}
+            <form id="register-form" class="space-y-4" novalidate>
+                <div id="bootstrap-banner" class="hidden rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-amber-800">
+                    <p class="font-medium"><i class="fa fa-user-plus"></i> 首个账号引导</p>
+                    <p class="mt-1">系统尚无任何用户——<b>本账号将直接成为管理员</b>，无需邮箱验证码。注册后请在「设置 → 邮箱服务（SMTP）」中配置邮件服务器，之后的用户注册将通过邮箱验证码进行。</p>
+                </div>
+                <div>
+                    <label class="mb-1 block text-sm font-medium text-gray-700">邮箱 <span class="text-xs text-gray-400">（必填，用于接收验证码）</span></label>
+                    <input id="r-email" type="email" class="input-base" autocomplete="email" maxlength="254" required>
+                </div>
+                <div>
+                    <label class="mb-1 block text-sm font-medium text-gray-700">用户名</label>
+                    <input id="r-username" class="input-base" autocomplete="username" maxlength="32" placeholder="2-32 位，中英文、数字、下划线" required>
+                </div>
+                <div>
+                    <label class="mb-1 block text-sm font-medium text-gray-700">密码</label>
+                    <div class="relative">
+                        <input id="r-password" type="password" class="input-base pr-10" autocomplete="new-password" maxlength="128" placeholder="至少10位，含大写、小写、数字" required>
+                        <button type="button" id="toggle-pwd" class="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-gray-400 hover:text-gray-600" tabindex="-1">
+                            <i class="fa fa-eye"></i>
+                        </button>
+                    </div>
+                    <div id="pwd-meter" class="mt-2 hidden">
+                        <div class="h-1 w-full rounded bg-gray-200"><div id="pwd-bar" class="h-1 rounded bg-red-500 transition-all" style="width:0%"></div></div>
+                        <p id="pwd-hint" class="mt-1 text-xs text-gray-500"></p>
+                    </div>
+                </div>
+                <div>
+                    <label class="mb-1 block text-sm font-medium text-gray-700">确认密码</label>
+                    <input id="r-password2" type="password" class="input-base" autocomplete="new-password" maxlength="128" required>
+                </div>
+                <div id="verify-code-block">
+                    <label class="mb-1 block text-sm font-medium text-gray-700">邮箱验证码</label>
+                    <div class="flex gap-2">
+                        <input id="r-code" class="input-base flex-1" inputmode="numeric" maxlength="6" placeholder="6 位数字" required>
+                        <button type="button" id="send-code-btn" class="whitespace-nowrap rounded-lg border border-primary px-3 py-2 text-sm font-medium text-primary transition hover:bg-primary/5 disabled:opacity-50">
+                            获取验证码
+                        </button>
+                    </div>
+                </div>
+                <p id="register-msg" class="min-h-[20px] text-sm"></p>
+                <button type="submit" id="register-submit" class="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-white transition hover:bg-primary/90 disabled:opacity-60">
+                    注册并登录
+                </button>
+            </form>
+            {% endif %}
+
+            <p class="mt-4 text-center text-xs text-gray-400">
+                <i class="fa fa-lock"></i> 密码经强哈希存储，会话使用 HttpOnly Cookie
+            </p>
+        </div>
+    </div>
+
+    <script>
+        const mode = {{ ('register' if mode == 'register' else 'login') | tojson }};
+        // 统一 ajax：带自定义头，方便服务端区分 XHR 与跨站表单提交
+        async function api(url, body) {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
+                body: JSON.stringify(body)
+            });
+            let data = {};
+            try { data = await response.json(); } catch (err) { /* 非 JSON 错误页 */ }
+            if (!response.ok) {
+                throw new Error(data.detail || `请求失败（${response.status}）`);
+            }
+            return data;
+        }
+
+        function setMsg(el, text, ok = false) {
+            el.textContent = text;
+            el.className = 'min-h-[20px] text-sm ' + (ok ? 'msg-ok' : 'msg-error');
+        }
+
+        // 密码可见切换
+        document.getElementById('toggle-pwd')?.addEventListener('click', function () {
+            const input = this.closest('div').querySelector('input');
+            const showing = input.type === 'text';
+            input.type = showing ? 'password' : 'text';
+            this.innerHTML = showing ? '<i class="fa fa-eye"></i>' : '<i class="fa fa-eye-slash"></i>';
+        });
+
+        // ---------- 强密码实时校验（注册） ----------
+        const pwdRules = [
+            { label: '长度至少 10 位', test: (v) => v.length >= 10 },
+            { label: '包含小写字母', test: (v) => /[a-z]/.test(v) },
+            { label: '包含大写字母', test: (v) => /[A-Z]/.test(v) },
+            { label: '包含数字', test: (v) => /\d/.test(v) }
+        ];
+        function scorePassword(v) {
+            return pwdRules.filter((rule) => rule.test(v)).length;
+        }
+
+        // ---------- 登录 ----------
+        const loginForm = document.getElementById('login-form');
+        if (loginForm) {
+            loginForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const msgEl = document.getElementById('login-msg');
+                const btn = document.getElementById('login-submit');
+                const login = document.getElementById('f-login').value.trim();
+                const password = document.getElementById('f-password').value;
+                if (!login || !password) {
+                    setMsg(msgEl, '请输入账号和密码');
+                    return;
+                }
+                btn.disabled = true;
+                btn.textContent = '登录中...';
+                try {
+                    await api('/api/auth/login', { login, password });
+                    window.location.href = '/';
+                } catch (error) {
+                    setMsg(msgEl, error.message);
+                    btn.disabled = false;
+                    btn.textContent = '登录';
+                }
+            });
+        }
+
+        // ---------- 注册 ----------
+        const registerForm = document.getElementById('register-form');
+        if (registerForm) {
+            const emailEl = document.getElementById('r-email');
+            const usernameEl = document.getElementById('r-username');
+            const pwdEl = document.getElementById('r-password');
+            const pwd2El = document.getElementById('r-password2');
+            const codeEl = document.getElementById('r-code');
+            const msgEl = document.getElementById('register-msg');
+            const sendBtn = document.getElementById('send-code-btn');
+            const meterEl = document.getElementById('pwd-meter');
+            const barEl = document.getElementById('pwd-bar');
+            const hintEl = document.getElementById('pwd-hint');
+            let verifyToken = '';
+            let sendTimer = null;
+
+            // 注册页状态：SMTP 未配置提示 + 注册开关（关闭时禁用表单）
+            (async () => {
+                try {
+                    const response = await fetch('/api/auth/bootstrap-status', { headers: { 'X-Requested-With': 'fetch' } });
+                    if (!response.ok) return;
+                    const status = await response.json();
+                    const banner = document.getElementById('bootstrap-banner');
+                    if (!status.registration_open) {
+                        banner.classList.remove('hidden');
+                        banner.innerHTML = '<p class="font-medium"><i class="fa fa-ban"></i> 注册通道已关闭</p><p class="mt-1">管理员已关闭新用户注册。如需账号，请联系管理员。</p>';
+                        const form = document.getElementById('register-form');
+                        form.querySelectorAll('input, button').forEach((el) => { el.disabled = true; });
+                    } else if (!status.smtp_configured) {
+                        banner.classList.remove('hidden');
+                        banner.innerHTML = '<p class="font-medium"><i class="fa fa-envelope-o"></i> 邮箱服务未配置</p><p class="mt-1">管理员尚未在「用户菜单 → 邮箱服务（SMTP）」中配置邮件服务器，暂时无法发送注册验证码。请联系管理员，或使用已有账号登录。</p>';
+                    }
+                } catch (err) { /* 状态接口失败则按普通注册流程走 */ }
+            })();
+
+            pwdEl.addEventListener('input', () => {
+                const value = pwdEl.value;
+                meterEl.classList.remove('hidden');
+                const passed = scorePassword(value);
+                const width = (passed / pwdRules.length) * 100;
+                barEl.style.width = `${width}%`;
+                barEl.className = 'h-1 rounded transition-all ' + (passed <= 1 ? 'bg-red-500' : passed <= 2 ? 'bg-amber-500' : passed <= 3 ? 'bg-yellow-400' : 'bg-emerald-500');
+                hintEl.textContent = value ? pwdRules.filter((rule) => !rule.test(value)).map((rule) => rule.label).join('；') : '';
+            });
+
+            function startCooldown(seconds) {
+                let left = seconds;
+                sendBtn.disabled = true;
+                sendBtn.textContent = `${left}s 后重发`;
+                sendTimer = setInterval(() => {
+                    left -= 1;
+                    if (left <= 0) {
+                        clearInterval(sendTimer);
+                        sendBtn.disabled = false;
+                        sendBtn.textContent = '获取验证码';
+                    } else {
+                        sendBtn.textContent = `${left}s 后重发`;
+                    }
+                }, 1000);
+            }
+
+            sendBtn.addEventListener('click', async () => {
+                const email = emailEl.value.trim();
+                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                    setMsg(msgEl, '请先输入正确的邮箱地址');
+                    return;
+                }
+                sendBtn.disabled = true;
+                sendBtn.textContent = '发送中...';
+                try {
+                    const result = await api('/api/auth/register/send-code', { email });
+                    verifyToken = result.verify_token || verifyToken;
+                    setMsg(msgEl, result.message || '验证码已发送，请查收邮件', true);
+                    startCooldown(60);
+                } catch (error) {
+                    setMsg(msgEl, error.message);
+                    sendBtn.disabled = false;
+                    sendBtn.textContent = '获取验证码';
+                }
+            });
+
+            registerForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const email = emailEl.value.trim();
+                const username = usernameEl.value.trim();
+                const password = pwdEl.value;
+                const password2 = pwd2El.value;
+                const code = codeEl.value.trim();
+
+                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setMsg(msgEl, '邮箱格式不正确'); return; }
+                if (!/^[\u4e00-\u9fa5A-Za-z0-9_]{2,32}$/.test(username)) { setMsg(msgEl, '用户名 2-32 位，仅限中英文、数字、下划线'); return; }
+                const failed = pwdRules.filter((rule) => !rule.test(password)).map((rule) => rule.label);
+                if (failed.length) { setMsg(msgEl, `密码不满足要求：${failed.join('；')}`); return; }
+                if (password !== password2) { setMsg(msgEl, '两次输入的密码不一致'); return; }
+                if (!verifyToken) { setMsg(msgEl, '请先获取邮箱验证码'); return; }
+                if (!/^\d{6}$/.test(code)) { setMsg(msgEl, '验证码为 6 位数字'); return; }
+
+                const btn = document.getElementById('register-submit');
+                btn.disabled = true;
+                btn.textContent = '注册中...';
+                try {
+                    await api('/api/auth/register', {
+                        email, username, password,
+                        verify_token: verifyToken, verify_code: code
+                    });
+                    window.location.href = '/';
+                } catch (error) {
+                    setMsg(msgEl, error.message);
+                    btn.disabled = false;
+                    btn.textContent = '注册并登录';
+                }
+            });
+        }
+    </script>
+</body>
+</html>
