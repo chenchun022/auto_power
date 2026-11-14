@@ -1,5 +1,5 @@
 name: auto_power
-# 触发条件：推送到 main 分支时自动执行（无需手动打标签）
+# 触发条件：推送到 main 分支时自动执行（无需手动打标签）；支持手动触发
 on:
   push:
     branches: [ "main" ]
@@ -8,6 +8,7 @@ on:
       - 'main.py'
       - 'requirements.txt'
       - '.github/workflows/**'
+  workflow_dispatch: {}  # 手动触发：当前提交已有标签时 tag-action 会复用该标签（不 bump）
 
 # 全局环境变量：统一配置
 env:
